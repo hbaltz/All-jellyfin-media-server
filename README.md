@@ -7,6 +7,16 @@
 
 Welcome to the All-jellyfin-media-server Repository! This repository contains everything you need to create your own Jellyfin media server with Sonarr, Radarr, Jellyseerr, Prowlarr, Jackett, qBittorrent, Bazarr, and Gluetun (VPN) in a Docker Compose setup. We'll refer to the compilation of all containers as **Isyrr** to keep it simple.
 
+> [!NOTE]
+> **This is a customized fork.** On top of the upstream stack it adds:
+> - **Bazarr** – automatic subtitle downloads for Radarr/Sonarr
+> - **Translatarr** – automatic subtitle translation
+> - **Tailscale** – exposes Jellyfin / Jellyseerr (and the audiobook front-ends) on a private tailnet instead of publishing ports on the LAN
+> - **qbit-port-sync** – pushes the Gluetun forwarded port into qBittorrent automatically
+> - **Audiobook stack** – Audiobookshelf (player/library), AudioBookRequest (requests, à la Jellyseerr) and Chaptarr (acquisition, à la Radarr), reusing the existing Prowlarr + qBittorrent
+>
+> See [**Added services**](#added-services-fork) and [**Audiobooks**](#audiobooks) below, and the compose files under [`compose_files/VPN-Only/`](compose_files/VPN-Only/) (`tailscale-docker-compose.yaml`, `tailscale-docker-compose-audiobooks.yaml`).
+
 ![](https://img.shields.io/github/stars/Morzomb/All-jellyfin-media-server.svg)
 ![](https://img.shields.io/github/forks/Morzomb/All-jellyfin-media-server.svg)
 ![](https://img.shields.io/github/release/Morzomb/All-jellyfin-media-server.svg) 
@@ -33,6 +43,15 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**qBittorrent**](#qbittorrent)
     - [**Bazarr**](#bazarr)
     - [**Gluetun (VPN)**](#gluetun-vpn)
+  - [**Added services (fork)**](#added-services-fork)
+    - [**Bazarr**](#bazarr)
+    - [**Translatarr**](#translatarr)
+    - [**Tailscale**](#tailscale)
+    - [**qbit-port-sync**](#qbit-port-sync)
+  - [**Audiobooks**](#audiobooks)
+    - [**Audiobookshelf**](#audiobookshelf)
+    - [**AudioBookRequest**](#audiobookrequest)
+    - [**Chaptarr**](#chaptarr)
 - [**Prerequisites**](#prerequisites)
   - [**Docker**](#docker)
     - [**Using Docker Compose :**](#using-docker-compose-)
@@ -63,6 +82,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
   - [**2. Installation with NVIDIA Only**](#2-installation-with-nvidia-only)
   - [**3. Installation with NVIDIA and VPN**](#3-installation-with-nvidia-and-vpn)
   - [**4. Installation with VPN (no-Nvidia)**](#4-installation-with-vpn-no-nvidia)
+  - [**5. Installation with Tailscale (+ Audiobooks)**](#5-installation-with-tailscale--audiobooks)
 - [**Accessing Applications**](#accessing-applications)
 - [**Configuration Guide for Web Interfaces Only**](#configuration-guide-for-web-interfaces-only)
   - [**qBittorrent**](#qbittorrent-1)
@@ -94,6 +114,8 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**Configure Subtitle Providers**](#configure-subtitle-providers)
     - [**Configure Languages**](#configure-languages)
     - [**Configure Subtitles**](#configure-subtitles)
+  - [**Tailscale**](#tailscale-1)
+  - [**Audiobooks (Audiobookshelf / AudioBookRequest / Chaptarr)**](#audiobooks-audiobookshelf--audiobookrequest--chaptarr)
 - [**Updating Applications**](#updating-applications)
 - [**Disclaimer**](#disclaimer)
 
@@ -193,6 +215,97 @@ Isyrr uses Docker and Docker Compose to deploy the services. Docker Compose file
     <img src="https://m.media-amazon.com/images/I/51gvJaXQh4L.png" width="200" height="200" style="margin-right: 10px;">
     <img src="https://m.media-amazon.com/images/I/31o0QB0R0sL.png" width="200" height="200" style="margin-left: 10px;">
 </div>
+
+---
+
+## **Added services (fork)**
+
+These services are **not part of the upstream project**. They are wired into the `compose_files/VPN-Only/tailscale-docker-compose.yaml` and `tailscale-docker-compose-audiobooks.yaml` files.
+
+### **Bazarr**
+
+[Bazarr](https://www.bazarr.media/) is a companion to Sonarr and Radarr that manages and downloads subtitles based on your requirements. It watches the same `movies` / `tv` folders and pulls subtitles from providers such as OpenSubtitles.
+
+- Image: `lscr.io/linuxserver/bazarr:latest`
+- Web UI: `http://<host>:6767`
+- Mounts: `configs/bazarr:/config`, `radarr/movies:/movies`, `sonarr/tv:/tv`
+- `depends_on`: `sonarr`, `radarr`
+
+### **Translatarr**
+
+[Translatarr](https://github.com/aleknomu/translatarr) automatically translates subtitle files (e.g. English → French) for media already imported by Radarr / Sonarr, filling the gaps Bazarr cannot cover from providers.
+
+- Image: `aleknomu/translatarr:latest`
+- Web UI: `http://<host>:6868`
+- Mounts: `configs/translatarr:/config`, `radarr/movies:/movies`, `sonarr/tv:/tv`
+
+### **Tailscale**
+
+[Tailscale](https://tailscale.com/) creates a private, encrypted WireGuard mesh (tailnet) between your devices. In this fork the `tailscale` container is a **network provider**: `jellyfin`, `jellyseerr` and the audiobook front-ends run with `network_mode: service:tailscale`, so they are reachable at `http://homeserver:<port>` over the tailnet instead of being published on the LAN.
+
+- Image: `tailscale/tailscale:latest`
+- Requires an auth key in `TS_AUTHKEY` (set inside the compose file), `/dev/net/tun`, and `NET_ADMIN` + `SYS_MODULE` capabilities.
+- Every port that a co-networked container needs **must be listed on the `tailscale` service** `ports:` block (that is why `13378` and `8000` are added there for the audiobook stack).
+- State: `configs/tailscale:/var/lib/tailscale`
+
+> [!IMPORTANT]
+> Do not commit a real `TS_AUTHKEY` to a public repository. Use an ephemeral/reusable key and rotate it if it leaks. Prefer moving it into the `.env` file (e.g. `TS_AUTHKEY=${TS_AUTHKEY}`).
+
+### **qbit-port-sync**
+
+A tiny helper container (`curlimages/curl`) sharing Gluetun's network namespace. It reads the port Gluetun forwards from the VPN provider (`/tmp/gluetun/forwarded_port`) and calls the qBittorrent API to set it as the listening port, so inbound connectivity keeps working after the forwarded port changes. It runs once (`restart: "no"`) and relies on `scripts/qbit-port-sync.sh`.
+
+---
+
+## **Audiobooks**
+
+An optional audiobook pipeline that mirrors the movies/TV layout and **reuses the existing Prowlarr and qBittorrent**:
+
+| Service | Role | Equivalent | Network | Access |
+|---|---|---|---|---|
+| `audiobookshelf` | player / library | Jellyfin | `service:tailscale` | `http://homeserver:13378` |
+| `audiobookrequest` | request front-end | Jellyseerr | `service:tailscale` | `http://homeserver:8000` |
+| `chaptarr` | acquisition manager | Radarr | bridge | `http://<host>:8789` |
+
+Directory convention under `${COMMON_PATH}` (`/YOUR_PATH/Isyrr`):
+
+```
+configs/audiobookshelf      configs/audiobookrequest      configs/chaptarr
+chaptarr/audiobooks         chaptarr/ebooks              audiobookshelf/metadata
+```
+
+Create them once before the first `up`:
+
+```bash
+mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,audiobookrequest,chaptarr} \
+         ${COMMON_PATH}/chaptarr/{audiobooks,ebooks} \
+         ${COMMON_PATH}/audiobookshelf/metadata
+```
+
+### **Audiobookshelf**
+
+[Audiobookshelf](https://www.audiobookshelf.org/) is a self-hosted audiobook and podcast server with multi-user support, progress sync, native iOS/Android apps, chapter editing and m4b merging.
+
+- Image: `ghcr.io/advplyr/audiobookshelf:latest`
+- Runs with `network_mode: service:tailscale`, `PORT=13378`
+- Mounts: `configs/audiobookshelf:/config`, `audiobookshelf/metadata:/metadata`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/books`
+
+### **AudioBookRequest**
+
+[AudioBookRequest](https://github.com/markbeep/AudioBookRequest) is a request/wishlist front-end in the spirit of Overseerr/Jellyseerr, but for audiobooks: it searches via the Audible catalogue and hands downloads to Prowlarr / your download client.
+
+- Image: **`markbeep/audiobookrequest:1`** (Docker Hub — *not* `ghcr.io`; the `1` tag tracks the v1.x line)
+- Runs with `network_mode: service:tailscale`, port `8000`
+- Mounts: `configs/audiobookrequest:/config`
+
+### **Chaptarr**
+
+[Chaptarr](https://github.com/Chaptarr/Chaptarr) is a maintained fork of the (now archived) Readarr, handling ebooks **and** audiobooks in a single instance, with narrator-aware organisation, multiple editions, m4b support and MP3→M4B conversion.
+
+- Image: **`chaptarr/chaptarr:latest`** (Docker Hub). Project is in **beta** — consider pinning an explicit tag (e.g. `chaptarr/chaptarr:0.9.333`) once you settle on a version.
+- Web UI: `http://<host>:8789`
+- Mounts: `configs/chaptarr:/config`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/ebooks`, `qbittorrent/downloads:/downloads`
+- Alternative: a commented-out `lazylibrarian` block (`lscr.io/linuxserver/lazylibrarian`) is included in the audiobooks compose file.
 
 ---
 
@@ -865,6 +978,29 @@ docker compose -f docker-compose-<YOUR_VPN>-vpn.yaml up -d
 ```
 [Go to the file here](compose_files/VPN-Only/)
 
+## **5. Installation with Tailscale (+ Audiobooks)**
+
+> [!WARNING]
+> If you use this method, fill in the `.env` file located in `compose_files/VPN-Only/`. Jellyfin, Jellyseerr and the audiobook front-ends are served over the **tailnet** (`http://homeserver:<port>`), not on `localhost`. Set a valid `TS_AUTHKEY` (see the [Tailscale](#tailscale) note about keeping it out of a public repo).
+
+This fork adds two Tailscale-based compose files in `compose_files/VPN-Only/`:
+
+| File | Contents |
+|---|---|
+| `tailscale-docker-compose.yaml` | Tailscale + Jellyfin + Jellyseerr + Gluetun + qBittorrent + qbit-port-sync + FlareSolverr + Prowlarr + Sonarr + Radarr + Bazarr + Translatarr |
+| `tailscale-docker-compose-audiobooks.yaml` | Everything above **plus** Audiobookshelf + AudioBookRequest + Chaptarr |
+
+Create the audiobook directories first (see [Audiobooks](#audiobooks)), then:
+
+```bash
+cd compose_files/VPN-Only/
+# stack without audiobooks
+docker compose -f tailscale-docker-compose.yaml up -d
+# or the stack with audiobooks
+docker compose -f tailscale-docker-compose-audiobooks.yaml up -d
+```
+[Go to the files here](compose_files/VPN-Only/)
+
 **[`^        back to top        ^`](#table-of-contents)**
 
 # **Accessing Applications**
@@ -883,6 +1019,19 @@ Once the applications are deployed, you can access them using the following addr
 * Prowlarr : http://localhost:9696
 * qBittorrent : http://localhost:8080
 * Bazarr : http://localhost:6767
+
+Added by this fork:
+
+* Bazarr : http://localhost:6767
+* Translatarr : http://localhost:6868
+
+When using a **Tailscale** compose file, Jellyfin / Jellyseerr / Audiobookshelf / AudioBookRequest are reachable over the tailnet instead of `localhost`:
+
+* Jellyfin : http://homeserver:8096
+* Jellyseerr : http://homeserver:5055
+* Audiobookshelf : http://homeserver:13378
+* AudioBookRequest : http://homeserver:8000
+* Chaptarr : http://localhost:8789 *(LAN only, not on the tailnet)*
 
 Gluetun (Nord VPN) will be automatically configured to be used with the applications.
 
@@ -1280,6 +1429,64 @@ If you want other users to access your Jellyfin server, you can create additiona
 3. Click **Save**.
 
 Once configured, Bazarr will automatically monitor your Sonarr and Radarr libraries and download subtitles based on your configured preferences.
+1. Open the WebUI at `http://<host>:6767`.
+2. Go to **Settings** > **Languages**, create a **Languages Profile** with the language(s) you want (e.g. French, English) and set it as default.
+3. Go to **Settings** > **Sonarr**:
+   - **Address**: `sonarr`  **Port**: `8989`  **API Key**: from Sonarr **Settings** > **General**
+   - **Test** then **Save**.
+4. Go to **Settings** > **Radarr**:
+   - **Address**: `radarr`  **Port**: `7878`  **API Key**: from Radarr **Settings** > **General**
+   - **Test** then **Save**.
+5. Go to **Settings** > **Providers**, add at least one subtitle provider (e.g. OpenSubtitles.com with your account) and **Save**.
+6. In **Movies** / **Series**, assign the languages profile and let Bazarr scan.
+
+> Translatarr (`http://<host>:6868`) can be pointed at the same `radarr` / `sonarr` APIs to auto-translate subtitles that no provider supplies.
+
+---
+
+## **Tailscale**
+
+1. Generate an **auth key** at <https://login.tailscale.com/admin/settings/keys> (reusable or ephemeral; enable *Ephemeral* if the node is disposable).
+2. Put it in the compose file's `TS_AUTHKEY=` (or better, `.env` as `TS_AUTHKEY` and reference `${TS_AUTHKEY}`).
+3. Start the stack:
+   ```bash
+   cd compose_files/VPN-Only/
+   docker compose -f tailscale-docker-compose.yaml up -d
+   ```
+4. The node registers as **`homeserver`** in your tailnet. From any device on the tailnet, browse `http://homeserver:8096` (Jellyfin), `http://homeserver:5055` (Jellyseerr), etc.
+5. To expose it publicly with HTTPS instead, use `tailscale serve` / `funnel` from inside the container, or MagicDNS + a reverse proxy.
+
+> [!IMPORTANT]
+> Any container that shares the tailnet namespace (`network_mode: service:tailscale`) can only publish ports through the **`tailscale`** service `ports:` list. Add the port there, not on the app container.
+
+---
+
+## **Audiobooks (Audiobookshelf / AudioBookRequest / Chaptarr)**
+
+**0. Create the folders** (see [Audiobooks](#audiobooks)) and start `tailscale-docker-compose-audiobooks.yaml`.
+
+**1. Chaptarr** – `http://<host>:8789`
+   - **Settings** > **Media Management** > **Add Root Folder**: `/audiobooks` (and `/ebooks` for ebooks).
+   - **Settings** > **Download Clients** > **+** > **qBittorrent**: **Host** `qbittorrent`, **Port** `8080`, user/pass as in qBittorrent, **Category** `chaptarr`.
+   - In qBittorrent, add a category `chaptarr` with save path `/downloads/chaptarr`.
+   - Indexers are provided by Prowlarr (next step), so no manual indexer here.
+
+**2. Prowlarr** – add book indexers and sync to Chaptarr
+   - **Indexers** > **Add Indexer**: add audiobook/ebook-capable trackers.
+   - **Settings** > **Apps** > **+** > **Chaptarr** (or *Readarr* if Chaptarr is not listed): **Prowlarr Server** `http://prowlarr:9696`, **[Chaptarr] Server** `http://chaptarr:8789`, **API Key** from Chaptarr **Settings** > **General**. **Test**, **Save**.
+
+**3. Audiobookshelf** – `http://homeserver:13378`
+   - Create the admin account on first launch.
+   - **Settings** > **Libraries** > **Add Library**: type *Books*, folder `/audiobooks` (add a second library for `/books` if you keep ebooks).
+   - Install the mobile app and point it at `http://homeserver:13378`.
+
+**4. AudioBookRequest** – `http://homeserver:8000`
+   - Create the admin account.
+   - Configure the **Prowlarr** URL + API key and the **download client** (qBittorrent) in its settings so approved requests are grabbed automatically.
+   - Optionally connect Audiobookshelf so it knows what you already own.
+
+> [!NOTE]
+> AudioBookRequest and Chaptarr are young projects. Pin explicit image tags and check their repos before upgrading. Chaptarr is explicitly **beta**.
 
 **[`^        back to top        ^`](#table-of-contents)**
 

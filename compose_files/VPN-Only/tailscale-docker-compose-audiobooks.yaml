@@ -1,0 +1,311 @@
+services:
+
+  # ── TAILSCALE ─────────────────────────────────────────────
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: homeserver
+    ports:
+      - 8096:8096
+      - 8920:8920
+      - 7359:7359/udp
+      - 1900:1900/udp
+      - 5055:5055
+      # ↓ ADDED — audiobook front-ends sharing this netns
+      - 13378:13378   # audiobookshelf
+      - 8000:8000     # audiobookrequest
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ${COMMON_PATH}/configs/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    restart: unless-stopped
+
+  # ── JELLYFIN ──────────────────────────────────────────────
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ${COMMON_PATH}:${COMMON_PATH}
+      - ${COMMON_PATH}/configs/jellyfin:/config
+      - ${COMMON_PATH}/jellyfin/cache:/cache
+      - ${COMMON_PATH}/sonarr/tv:/data/tvshows
+      - ${COMMON_PATH}/radarr/movies:/data/movies
+      - ${COMMON_PATH}/qbittorrent/downloads:/data/media_downloads
+      # ↓ ADDED — optional: browse audiobooks in Jellyfin too (needs the Bookshelf plugin)
+      - ${COMMON_PATH}/chaptarr/audiobooks:/data/audiobooks
+    restart: unless-stopped
+
+  # ── JELLYSEERR ────────────────────────────────────────────
+  jellyseerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    container_name: jellyseerr
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}/configs/jellyseerr:/app/config
+    restart: unless-stopped
+
+  # ── GLUETUN ───────────────────────────────────────────────
+  gluetun:
+    container_name: GlueTun-VPN
+    image: qmcgaw/gluetun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8080:8080
+      - 51820:51820
+      - 51820:51820/udp
+      - 46931:46931
+      - 46931:46931/udp
+    environment:
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=wireguard
+      - VPN_ENDPOINT_IP=${ENDPOINT_IP}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDR}
+      - VPN_ENDPOINT_PORT=${ENDPOINT_PORT}
+      - VPN_DNS_ADDRESS=${DNS_ADDRESS}
+      - WIREGUARD_PUBLIC_KEY=${PUBLIC_KEY}
+      - WIREGUARD_PRIVATE_KEY=${PRIVATE_KEY}
+      - VPN_PORT_FORWARDING=on
+      - VPN_PORT_FORWARDING_PROVIDER=protonvpn
+      - VPN_PORT_FORWARDING_STATUS_FILE=/tmp/gluetun/forwarded_port
+      - TZ=${TZ}
+      - UPDATER_PERIOD=24h
+      - VPN_COUNTRY=NL
+    restart: always
+    volumes:
+      - ${COMMON_PATH}:${COMMON_PATH}
+      - ${COMMON_PATH}/gluetun:/tmp/gluetun
+
+  # ── QBITTORRENT ───────────────────────────────────────────
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    network_mode: service:gluetun
+    container_name: qbittorrent
+    depends_on:
+      - gluetun
+    environment:
+      - WEBUI_PORT=8080
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}:${COMMON_PATH}
+      - ${COMMON_PATH}/configs/qbittorrent:/config
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    restart: unless-stopped
+
+  # ── QBIT PORT SYNC ────────────────────────────────────────
+  qbit-port-sync:
+    image: curlimages/curl:latest
+    container_name: qbit-port-sync
+    network_mode: service:gluetun
+    depends_on:
+      - gluetun
+      - qbittorrent
+    volumes:
+      - ${COMMON_PATH}/scripts/qbit-port-sync.sh:/qbit-port-sync.sh:ro
+      - ${COMMON_PATH}/gluetun:/tmp/gluetun:ro
+    command: sh /qbit-port-sync.sh
+    restart: "no"
+
+  # ── FLARESOLVERR ──────────────────────────────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+      - TZ=${TZ}
+      - LANG=fr_FR
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+
+  # ── PROWLARR ──────────────────────────────────────────────
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}/configs/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  # ── SONARR ────────────────────────────────────────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}:${COMMON_PATH}
+      - ${COMMON_PATH}/configs/sonarr:/config
+      - ${COMMON_PATH}/sonarr/tv:/tv
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  # ── RADARR ────────────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}:${COMMON_PATH}
+      - ${COMMON_PATH}/configs/radarr:/config
+      - ${COMMON_PATH}/radarr/movies:/movies
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  # ── BAZARR ────────────────────────────────────────────────
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}/configs/bazarr:/config
+      - ${COMMON_PATH}/radarr/movies:/movies
+      - ${COMMON_PATH}/sonarr/tv:/tv
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+    depends_on:
+      - sonarr
+      - radarr
+
+  translatarr:
+    image: aleknomu/translatarr:latest
+    container_name: translatarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - ${COMMON_PATH}/configs/translatarr:/config
+      - ${COMMON_PATH}/radarr/movies:/movies
+      - ${COMMON_PATH}/sonarr/tv:/tv
+    ports:
+      - 6868:6868
+
+  # ══════════════════════════════════════════════════════════
+  #  AUDIOBOOKS  (new)
+  #  Layout mirrors the movies/tv stack:
+  #    - audiobookshelf  = player/library      (like jellyfin)   -> tailnet
+  #    - audiobookrequest = request front-end  (like jellyseerr) -> tailnet
+  #    - chaptarr        = acquisition manager  (like radarr)     -> LAN only
+  #  Reuses the existing Prowlarr + qBittorrent.
+  #  Create the dirs once:
+  #    mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,audiobookrequest,chaptarr} \
+  #             ${COMMON_PATH}/chaptarr/{audiobooks,ebooks} \
+  #             ${COMMON_PATH}/audiobookshelf/metadata
+  # ══════════════════════════════════════════════════════════
+
+  # ── AUDIOBOOKSHELF ────────────────────────────────────────
+  # Web UI over Tailscale: http://homeserver:13378
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      - TZ=${TZ}
+      - PORT=13378
+    volumes:
+      - ${COMMON_PATH}/configs/audiobookshelf:/config
+      - ${COMMON_PATH}/audiobookshelf/metadata:/metadata
+      - ${COMMON_PATH}/chaptarr/audiobooks:/audiobooks
+      - ${COMMON_PATH}/chaptarr/ebooks:/books
+    restart: unless-stopped
+
+  # ── AUDIOBOOKREQUEST ──────────────────────────────────────
+  # "Jellyseerr for audiobooks": Audible search + push to Prowlarr/qBittorrent.
+  # Web UI over Tailscale: http://homeserver:8000
+  audiobookrequest:
+    image: markbeep/audiobookrequest:1   # Docker Hub (NOT ghcr.io); tag "1" tracks the v1.x line
+    container_name: audiobookrequest
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      - TZ=${TZ}
+      # default listen port is 8000 (matches the port opened on the tailscale service)
+    volumes:
+      - ${COMMON_PATH}/configs/audiobookrequest:/config
+    restart: unless-stopped
+
+  # ── CHAPTARR ──────────────────────────────────────────────
+  # Readarr fork (ebooks + audiobooks in one instance). Still BETA.
+  # Image: Docker Hub 'chaptarr/chaptarr'. Consider pinning an explicit tag
+  # (e.g. chaptarr/chaptarr:0.9.333) instead of 'latest' once you pick a version.
+  # Web UI on the LAN: http://<host>:8789
+  chaptarr:
+    image: chaptarr/chaptarr:latest
+    container_name: chaptarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}/configs/chaptarr:/config
+      - ${COMMON_PATH}/chaptarr/audiobooks:/audiobooks
+      - ${COMMON_PATH}/chaptarr/ebooks:/ebooks
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    ports:
+      - 8789:8789
+    restart: unless-stopped
+
+  # ── ALTERNATIVE: LAZYLIBRARIAN (instead of chaptarr) ──────
+  # Older, more fiddly, but a stable image exists on LinuxServer.
+  # lazylibrarian:
+  #   image: lscr.io/linuxserver/lazylibrarian:latest
+  #   container_name: lazylibrarian
+  #   environment:
+  #     - PUID=0
+  #     - PGID=0
+  #     - TZ=${TZ}
+  #     - DOCKER_MODS=linuxserver/mods:universal-calibre
+  #   volumes:
+  #     - ${COMMON_PATH}/configs/lazylibrarian:/config
+  #     - ${COMMON_PATH}/chaptarr/audiobooks:/audiobooks
+  #     - ${COMMON_PATH}/chaptarr/ebooks:/books
+  #     - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+  #   ports:
+  #     - 5299:5299
+  #   restart: unless-stopped

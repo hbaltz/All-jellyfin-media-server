@@ -2,4 +2,11 @@
 .git
 
 # /image
-# .env
+
+# Secrets — never commit real .env files (VPN credentials, WireGuard keys, TS_AUTHKEY)
+.env
+**/.env
+!**/.env.example
+
+# Local helper scripts pulled down at install time
+get-docker.sh
