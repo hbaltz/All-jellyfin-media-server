@@ -274,20 +274,45 @@ Un pipeline livres audio optionnel qui reprend la logique films/séries et **ré
 | `audiobookrequest` | `8000` | `8000` (défaut) | le service **`tailscale`** | `http://homeserver:8000` |
 | `chaptarr` | `8789` | `8789` | le service `chaptarr` lui-même | `http://<hôte>:8789` |
 
-Ports utilisés *entre* conteneurs lors du remplissage des écrans de configuration :
+#### **Noms d'hôte des conteneurs — à lire avant de remplir le moindre écran de configuration**
+
+> [!CAUTION]
+> **`qbittorrent` n'est pas un nom d'hôte valide dans cette stack.** qBittorrent tourne avec `network_mode: service:gluetun` : il n'a donc aucune identité réseau propre et le DNS de Docker n'a aucun enregistrement pour lui. Pire, chez de nombreux FAI le nom fuite vers le DNS public et résout silencieusement vers un serveur public sans rapport (chez Numericable/SFR, `qbittorrent` résout vers `qbittorrent.numericable.fr`). Le test de connexion échoue, ou reste bloqué, pour des raisons qui ne ressemblent en rien à un problème DNS.
+>
+> **Utilisez `gluetun` à la place.** Idem pour Jellyfin, Jellyseerr, Audiobookshelf et AudioBookRequest, qui vivent dans l'espace réseau `tailscale` et répondent sur `tailscale`.
+
+La règle : un conteneur déclaré avec `network_mode: service:X` s'adresse via **`X`**, pas via son propre nom.
+
+| Service | `network_mode` | Adresse à utiliser depuis les autres conteneurs | Vérifié |
+|---|---|---|---|
+| qBittorrent | `service:gluetun` | **`gluetun:8080`** | HTTP 200 |
+| Audiobookshelf | `service:tailscale` | **`tailscale:13378`** | HTTP 200 |
+| AudioBookRequest | `service:tailscale` | **`tailscale:8000`** | HTTP 302 |
+| Jellyfin | `service:tailscale` | **`tailscale:8096`** | |
+| Jellyseerr | `service:tailscale` | **`tailscale:5055`** | |
+| Chaptarr | *(bridge)* | `chaptarr:8789` | HTTP 200 |
+| Prowlarr | *(bridge)* | `prowlarr:9696` | |
+| Sonarr / Radarr / Bazarr | *(bridge)* | `sonarr:8989` / `radarr:7878` / `bazarr:6767` | |
+| FlareSolverr | *(bridge)* | `flaresolverr:8191` | |
+
+Donc, les adresses à saisir dans chaque écran de configuration :
 
 | Depuis | Vers | Adresse à saisir |
 |---|---|---|
-| Chaptarr | qBittorrent | `qbittorrent` : `8080` |
-| Prowlarr | Chaptarr | `http://chaptarr:8789` |
+| Chaptarr | qBittorrent | Host `gluetun`, Port `8080` |
+| AudioBookRequest | qBittorrent | `http://gluetun:8080` |
 | AudioBookRequest | Prowlarr | `http://prowlarr:9696` |
-| AudioBookRequest | qBittorrent | `http://qbittorrent:8080` |
-| AudioBookRequest | Audiobookshelf | `http://localhost:13378` (même espace réseau que Tailscale) |
+| AudioBookRequest | Audiobookshelf | `http://localhost:13378` *(même espace réseau — `localhost` fonctionne)* |
+| Prowlarr | Chaptarr | `http://chaptarr:8789` |
+| Radarr / Sonarr / Bazarr | qBittorrent | Host `gluetun`, Port `8080` |
+
+> [!NOTE]
+> Ceci corrige les instructions d'origine plus bas, qui indiquent de saisir `qbittorrent` comme Host pour Radarr et Sonarr. Ce conseil est antérieur aux variantes VPN ; avec `network_mode: service:gluetun` il ne peut pas fonctionner. Utilisez `gluetun`.
 
 > [!WARNING]
 > `audiobookshelf` et `audiobookrequest` utilisent `network_mode: service:tailscale` : **leurs ports doivent être déclarés dans le bloc `ports:` du service `tailscale`**, pas sur leur propre service. Si vous changez `13378` ou `8000`, changez-le aux *deux* endroits (la liste `ports:` de `tailscale` et la variable `PORT` de l'application).
 >
-> Comme ils partagent l'espace réseau de Tailscale, ces deux conteneurs se joignent entre eux via `localhost`, mais joignent `prowlarr` / `qbittorrent` / `chaptarr` par leur nom de conteneur.
+> Les conteneurs partageant un espace réseau se joignent entre eux via `localhost`. Tout le reste se joint via le nom du propriétaire de l'espace réseau, selon le tableau ci-dessus.
 
 Convention de dossiers sous `${COMMON_PATH}` (`/VOTRE_CHEMIN/Isyrr`) :
 
@@ -1518,28 +1543,51 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
    | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/audiobooks` |
    | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/ebooks` *(seulement si vous gardez des ebooks)* |
    | **Settings** > **Media Management** > *Show Advanced* > **Importing** | Use Hardlinks instead of Copy | **activé** |
-   | **Settings** > **Download Clients** > **+** > **qBittorrent** | Host | `qbittorrent` |
+   | **Settings** > **Download Clients** > **+** > **qBittorrent** | Host | **`gluetun`** *(pas `qbittorrent` — voir [Noms d'hôte des conteneurs](#noms-dhôte-des-conteneurs--à-lire-avant-de-remplir-le-moindre-écran-de-configuration))* |
    | | Port | `8080` |
-   | | Username / Password | comme dans qBittorrent |
+   | | Use SSL | désactivé |
+   | | Username | `admin` |
+   | | Password | votre mot de passe qBittorrent |
    | | Category | `chaptarr` |
 
    Cliquez sur **Test** (une coche verte doit apparaître), puis **Save**. N'ajoutez **pas** d'indexeurs ici — Prowlarr les pousse à l'étape suivante.
+
+   <details>
+   <summary>Retrouver votre mot de passe qBittorrent</summary>
+
+   Par défaut `admin` / `adminadmin`. Les images récentes génèrent plutôt un mot de passe temporaire au premier démarrage — lisez-le avec :
+
+   ```bash
+   docker logs qbittorrent 2>&1 | grep -i "temporary password"
+   ```
+
+   Définissez-en un permanent dans qBittorrent **Options** > **Web UI** > *Authentification*.
+   </details>
 
    Notez la clé API dans **Settings** > **General** > **API Key**, elle sert plus bas.
 
 **3. Prowlarr** – `http://localhost:9696` – ajoutez les indexeurs livres et synchronisez-les vers Chaptarr
 
    - **Indexers** > **Add Indexer** : ajoutez des trackers proposant livres audio / ebooks (catégories *Audio > Audiobook* et *Books*). Testez et enregistrez chacun.
-   - **Settings** > **Apps** > **+** > **Chaptarr** (choisissez *Readarr* si Chaptarr n'est pas encore dans la liste — l'API est compatible) :
+   - **Settings** > **Apps** > **+** et choisissez **Readarr**.
+
+     > [!IMPORTANT]
+     > Il n'existe **aucun type d'application « Chaptarr »** dans Prowlarr (vérifié en 2.5.2). Chaptarr parle l'API de Readarr : vous l'enregistrez donc *en tant que* Readarr. Nommez l'entrée `Chaptarr` pour les distinguer.
 
      | Champ | Valeur |
      |---|---|
+     | Name | `Chaptarr` |
      | Sync Level | `Full Sync` |
      | Prowlarr Server | `http://prowlarr:9696` |
-     | Chaptarr Server | `http://chaptarr:8789` |
+     | Readarr Server | `http://chaptarr:8789` |
      | API Key | la clé Chaptarr de l'étape 2 |
+     | Sync Categories | `3030` (Audiobook), `7000`/`7020` (Books), `8000`/`8010` (Other/Books) |
 
-   - **Test**, puis **Save**. Vos indexeurs apparaissent alors automatiquement dans Chaptarr.
+   - **Test**, puis **Save**. Prowlarr pousse immédiatement tous les indexeurs dont les catégories recoupent celles ci-dessus ; ils apparaissent dans Chaptarr sous **Settings** > **Indexers**, avec la synchronisation RSS déjà activée.
+   - Pour forcer manuellement : **Settings** > **Apps** > *Sync App Indexers*.
+
+   > [!NOTE]
+   > Seuls les indexeurs annonçant réellement des catégories livres sont synchronisés : attendez-vous donc à **moins** d'indexeurs dans Chaptarr que dans Prowlarr — c'est le comportement normal, pas un échec. Les trackers uniquement anime/séries sont ignorés.
 
 **4. Audiobookshelf** – `http://homeserver:13378`
 
@@ -1564,7 +1612,11 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
      |---|---|
      | URL de base Prowlarr | `http://prowlarr:9696` |
      | Clé API Prowlarr | depuis Prowlarr **Settings** > **General** |
-     | Client de téléchargement | qBittorrent — `http://qbittorrent:8080`, mêmes identifiants, catégorie `chaptarr` |
+     | Client de téléchargement | qBittorrent |
+     | URL qBittorrent | **`http://gluetun:8080`** *(pas `qbittorrent`)* |
+     | Utilisateur / mot de passe qBittorrent | comme dans l'interface qBittorrent |
+     | Catégorie | `chaptarr` |
+     | URL Audiobookshelf *(optionnel)* | `http://localhost:13378` — même espace réseau, `localhost` est donc correct ici |
 
    - La recherche s'appuie sur le catalogue Audible, aucun identifiant supplémentaire n'est requis pour les recherches.
    - Choisissez le mode d'authentification (*open* / *basic* / *forms*) avant d'ouvrir l'accès à d'autres utilisateurs.
@@ -1574,6 +1626,62 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
 
 > [!TIP]
 > Deux chemins se recoupent volontairement : **AudioBookRequest** est l'interface « demander un livre » (façon Jellyseerr), tandis que **Chaptarr** est le gestionnaire de bibliothèque complet (façon Radarr) qui surveille les auteurs et met à niveau les fichiers. Vous pouvez n'en utiliser qu'un seul — AudioBookRequest + Prowlarr + Audiobookshelf est la configuration la plus légère si vous n'avez pas besoin de surveillance.
+
+### **Lancer un téléchargement torrent**
+
+Tout ce qui précède, c'est du câblage. Voici la partie qui récupère réellement un fichier.
+
+#### **Liste de vérification préalable**
+
+Parcourez-la avant votre première recherche — un oubli ici est la cause habituelle des « aucun résultat » ou des « bloqué à 0 % » :
+
+| # | Vérification | Comment vérifier |
+|---|---|---|
+| 1 | Le VPN est actif et qBittorrent passe derrière | `docker exec qbittorrent curl -s https://api.ipify.org/` renvoie l'IP du **VPN**, pas celle de votre FAI |
+| 2 | Le port forwardé est appliqué | qBittorrent **Options** > **Connexion** > *Port d'écoute* correspond à `${COMMON_PATH}/gluetun/forwarded_port` (ce que `qbit-port-sync` automatise) |
+| 3 | qBittorrent est en mode automatique | **Options** > **Téléchargements** > *Mode de gestion des torrents par défaut* : `Automatique` — sinon les chemins de sauvegarde par catégorie sont ignorés |
+| 4 | La catégorie `chaptarr` existe | qBittorrent > **CATEGORIES** > `chaptarr` → `/downloads/chaptarr` |
+| 5 | Les indexeurs sont synchronisés | Chaptarr > **Settings** > **Indexers** liste les trackers poussés par Prowlarr |
+| 6 | Au moins un indexeur couvre les livres | Prowlarr > **Indexers**, les catégories de l'indexeur incluent *Audio > Audiobook* (`3030`) et/ou *Books* (`7000`, `8000`) |
+
+#### **A. Télécharger via Chaptarr (bibliothèque surveillée)**
+
+1. **Library** > **Add New** et cherchez un auteur ou un titre.
+2. Choisissez le résultat, puis réglez :
+   - **Root Folder** : `/audiobooks`
+   - **Monitor** : `All Books` (ou `Future Books` si vous ne voulez que les nouveautés)
+   - **Quality Profile** : un profil incluant les formats voulus (M4B, MP3)
+   - **Search for missing books** : coché, pour démarrer immédiatement
+3. Cliquez sur **Add**. Chaptarr interroge tous les indexeurs synchronisés et récupère la meilleure correspondance.
+4. Suivez la progression dans **Activity** > **Queue**. Le torrent apparaît dans qBittorrent sous la catégorie `chaptarr`.
+5. Pour chercher manuellement : ouvrez le livre > **Manual Search** (la loupe), examinez les releases et cliquez sur la flèche de téléchargement de celle que vous voulez.
+
+Une fois le torrent terminé, Chaptarr l'importe dans `/audiobooks` (en hardlink, le seed continue donc), et Audiobookshelf le détecte au scan suivant — ou immédiatement via **Settings** > **Libraries** > *Scan*.
+
+#### **B. Télécharger via AudioBookRequest (flux de demande)**
+
+1. Cherchez un titre depuis la page d'accueil — les résultats viennent du catalogue Audible.
+2. Cliquez sur **Request**.
+3. Selon votre mode d'authentification, la demande est auto-approuvée ou attend dans la **Wishlist** qu'un admin l'approuve.
+4. À l'approbation, AudioBookRequest interroge Prowlarr et envoie la release choisie à qBittorrent.
+5. Suivez-la dans qBittorrent, puis dans Audiobookshelf une fois le fichier arrivé.
+
+#### **Dépannage**
+
+| Symptôme | Cause probable |
+|---|---|
+| **« No indexers available with RSS sync enabled, Chaptarr will not grab new releases automatically »** | Chaptarr a **zéro** indexeur, parce qu'il n'a jamais été enregistré dans Prowlarr. Ajoutez-le dans Prowlarr **Settings** > **Apps** en tant qu'application **Readarr** (étape 3), puis *Sync App Indexers*. Vérifiez via **Settings** > **Indexers** dans Chaptarr — la liste ne doit pas être vide. |
+| Indexeurs présents mais RSS toujours désactivé | Prowlarr en est propriétaire en Full Sync : basculer RSS depuis Chaptarr est écrasé. Activez RSS sur l'indexeur **dans Prowlarr**, puis resynchronisez. |
+| Aucun résultat de recherche | L'indexeur n'a aucune catégorie livre mappée, ou Prowlarr n'a jamais synchronisé — relancez **Settings** > **Apps** > *Sync App Indexers* dans Prowlarr |
+| Résultats trouvés, téléchargement jamais lancé | Le test du client de téléchargement échoue — le Host doit être **`gluetun`**, pas `qbittorrent` ; vérifiez ensuite le port `8080` et les identifiants |
+| Le test de connexion reste bloqué, ou signale un serveur distant inattendu | Vous avez saisi `qbittorrent` comme Host et le DNS de votre FAI l'a résolu vers une adresse publique — utilisez `gluetun` |
+| Torrent ajouté mais 0 pair / 0 % indéfiniment | Le port forwarding VPN est cassé ; revérifiez les points 1–2 ci-dessus et relancez `qbit-port-sync` |
+| Téléchargé mais jamais importé | Incohérence de chemin de catégorie : qBittorrent doit écrire dans `/downloads/chaptarr`, qui doit être le même dossier hôte que le `/downloads/chaptarr` vu par Chaptarr |
+| Importé mais absent d'Audiobookshelf | Le dossier de bibliothèque est erroné, ou il faut simplement scanner — **Settings** > **Libraries** > *Scan* |
+| Tracker protégé par Cloudflare en échec | Ajoutez FlareSolverr dans Prowlarr (**Settings** > **Indexers** > `http://flaresolverr:8191/`) et taguez l'indexeur avec `flaresolverr` |
+
+> [!CAUTION]
+> Ne téléchargez que des contenus auxquels vous avez légalement droit. Ce que proposent vos indexeurs, et ce qui est licite là où vous vivez, relève entièrement de votre responsabilité — voir l'[Avertissement](#avertissement).
 
 **[`^        retour au sommaire        ^`](#table-des-matières)**
 
