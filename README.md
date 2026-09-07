@@ -267,6 +267,29 @@ An optional audiobook pipeline that mirrors the movies/TV layout and **reuses th
 | `audiobookrequest` | request front-end | Jellyseerr | `service:tailscale` | `http://homeserver:8000` |
 | `chaptarr` | acquisition manager | Radarr | bridge | `http://<host>:8789` |
 
+#### **Ports**
+
+| Service | Host port | Container port | Declared on | Reachable at |
+|---|---|---|---|---|
+| `audiobookshelf` | `13378` | `13378` (`PORT=13378`) | the **`tailscale`** service | `http://homeserver:13378` |
+| `audiobookrequest` | `8000` | `8000` (default) | the **`tailscale`** service | `http://homeserver:8000` |
+| `chaptarr` | `8789` | `8789` | the `chaptarr` service itself | `http://<host>:8789` |
+
+Ports used *between* containers when you fill in the config screens:
+
+| From | To | Address to enter |
+|---|---|---|
+| Chaptarr | qBittorrent | `qbittorrent` : `8080` |
+| Prowlarr | Chaptarr | `http://chaptarr:8789` |
+| AudioBookRequest | Prowlarr | `http://prowlarr:9696` |
+| AudioBookRequest | qBittorrent | `http://qbittorrent:8080` |
+| AudioBookRequest | Audiobookshelf | `http://localhost:13378` (same netns as Tailscale) |
+
+> [!WARNING]
+> `audiobookshelf` and `audiobookrequest` use `network_mode: service:tailscale`, so **their ports must be declared in the `tailscale` service's `ports:` block**, not on their own service. If you change `13378` or `8000`, change it in *both* places (the `tailscale` `ports:` list and the app's `PORT` env).
+>
+> Because they share the Tailscale namespace, those two containers reach each other over `localhost`, but reach `prowlarr` / `qbittorrent` / `chaptarr` by container name.
+
 Directory convention under `${COMMON_PATH}` (`/YOUR_PATH/Isyrr`):
 
 ```
@@ -1465,28 +1488,81 @@ Once configured, Bazarr will automatically monitor your Sonarr and Radarr librar
 
 **0. Create the folders** (see [Audiobooks](#audiobooks)) and start `tailscale-docker-compose-audiobooks.yaml`.
 
-**1. Chaptarr** – `http://<host>:8789`
-   - **Settings** > **Media Management** > **Add Root Folder**: `/audiobooks` (and `/ebooks` for ebooks).
-   - **Settings** > **Download Clients** > **+** > **qBittorrent**: **Host** `qbittorrent`, **Port** `8080`, user/pass as in qBittorrent, **Category** `chaptarr`.
-   - In qBittorrent, add a category `chaptarr` with save path `/downloads/chaptarr`.
-   - Indexers are provided by Prowlarr (next step), so no manual indexer here.
+**1. qBittorrent** – add the download category first
 
-**2. Prowlarr** – add book indexers and sync to Chaptarr
-   - **Indexers** > **Add Indexer**: add audiobook/ebook-capable trackers.
-   - **Settings** > **Apps** > **+** > **Chaptarr** (or *Readarr* if Chaptarr is not listed): **Prowlarr Server** `http://prowlarr:9696`, **[Chaptarr] Server** `http://chaptarr:8789`, **API Key** from Chaptarr **Settings** > **General**. **Test**, **Save**.
+   Without this, Chaptarr will flag a "directory does not exist" error (same behaviour as Radarr).
 
-**3. Audiobookshelf** – `http://homeserver:13378`
-   - Create the admin account on first launch.
-   - **Settings** > **Libraries** > **Add Library**: type *Books*, folder `/audiobooks` (add a second library for `/books` if you keep ebooks).
-   - Install the mobile app and point it at `http://homeserver:13378`.
+   - On the host: `mkdir -p ${COMMON_PATH}/qbittorrent/downloads/chaptarr`
+   - WebUI (`http://localhost:8080`) > expand **CATEGORIES** > right-click **All** > **Add category...**
+     - **Category**: `chaptarr`
+     - **Save path**: `/downloads/chaptarr`
+   - Click **Add**.
 
-**4. AudioBookRequest** – `http://homeserver:8000`
-   - Create the admin account.
-   - Configure the **Prowlarr** URL + API key and the **download client** (qBittorrent) in its settings so approved requests are grabbed automatically.
-   - Optionally connect Audiobookshelf so it knows what you already own.
+**2. Chaptarr** – `http://<host>:8789`
+
+   Create the admin account on first launch, then:
+
+   | Where | Field | Value |
+   |---|---|---|
+   | **Settings** > **Media Management** > **Add Root Folder** | Path | `/audiobooks` |
+   | **Settings** > **Media Management** > **Add Root Folder** | Path | `/ebooks` *(only if you keep ebooks)* |
+   | **Settings** > **Media Management** > *Show Advanced* > **Importing** | Use Hardlinks instead of Copy | **enabled** |
+   | **Settings** > **Download Clients** > **+** > **qBittorrent** | Host | `qbittorrent` |
+   | | Port | `8080` |
+   | | Username / Password | as set in qBittorrent |
+   | | Category | `chaptarr` |
+
+   Click **Test** (expect a green check), then **Save**. Do **not** add indexers here — Prowlarr pushes them in the next step.
+
+   Note the API key from **Settings** > **General** > **API Key**, you need it below.
+
+**3. Prowlarr** – `http://localhost:9696` – add book indexers and sync them to Chaptarr
+
+   - **Indexers** > **Add Indexer**: add trackers that carry audiobooks/ebooks (categories *Audio > Audiobook* and *Books*). Test and Save each one.
+   - **Settings** > **Apps** > **+** > **Chaptarr** (pick *Readarr* if Chaptarr is not in the list yet — the API is compatible):
+
+     | Field | Value |
+     |---|---|
+     | Sync Level | `Full Sync` |
+     | Prowlarr Server | `http://prowlarr:9696` |
+     | Chaptarr Server | `http://chaptarr:8789` |
+     | API Key | the Chaptarr key from step 2 |
+
+   - **Test**, then **Save**. Your indexers now appear inside Chaptarr automatically.
+
+**4. Audiobookshelf** – `http://homeserver:13378`
+
+   - Create the admin account on first launch (this is the *server* account, separate from Jellyfin).
+   - **Settings** > **Libraries** > **Add Library**:
+
+     | Field | Value |
+     |---|---|
+     | Name | `Audiobooks` |
+     | Media type | `Books` |
+     | Folder | `/audiobooks` |
+
+   - Add a second library pointing at `/books` if you keep ebooks.
+   - **Settings** > **Users** to add accounts for other listeners (each gets its own progress sync).
+   - Mobile apps (iOS/Android): add the server as `http://homeserver:13378` — the device must be on your tailnet.
+
+**5. AudioBookRequest** – `http://homeserver:8000`
+
+   - Create the admin account on first launch, then in its settings:
+
+     | Setting | Value |
+     |---|---|
+     | Prowlarr base URL | `http://prowlarr:9696` |
+     | Prowlarr API key | from Prowlarr **Settings** > **General** |
+     | Download client | qBittorrent — `http://qbittorrent:8080`, same user/pass, category `chaptarr` |
+
+   - Search is powered by the Audible catalogue, so no extra credentials are needed for lookups.
+   - Set the auth mode (*open* / *basic* / *forms*) before exposing it to other users.
 
 > [!NOTE]
-> AudioBookRequest and Chaptarr are young projects. Pin explicit image tags and check their repos before upgrading. Chaptarr is explicitly **beta**.
+> AudioBookRequest and Chaptarr are young projects, and their settings screens move between releases — if a field name above does not match, check the project's own docs. Pin explicit image tags and read the release notes before upgrading. Chaptarr is explicitly **beta**.
+
+> [!TIP]
+> Two overlapping paths exist on purpose: **AudioBookRequest** is the "ask for a book" front-end (à la Jellyseerr), while **Chaptarr** is the full library manager (à la Radarr) that monitors authors and upgrades files. You can run either alone — AudioBookRequest + Prowlarr + Audiobookshelf is the lighter setup if you do not need monitoring.
 
 **[`^        back to top        ^`](#table-of-contents)**
 

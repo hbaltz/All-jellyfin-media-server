@@ -266,6 +266,29 @@ Un pipeline livres audio optionnel qui reprend la logique films/séries et **ré
 | `audiobookrequest` | interface de demandes | Jellyseerr | `service:tailscale` | `http://homeserver:8000` |
 | `chaptarr` | gestionnaire d'acquisition | Radarr | bridge | `http://<hôte>:8789` |
 
+#### **Ports**
+
+| Service | Port hôte | Port conteneur | Déclaré sur | Accessible via |
+|---|---|---|---|---|
+| `audiobookshelf` | `13378` | `13378` (`PORT=13378`) | le service **`tailscale`** | `http://homeserver:13378` |
+| `audiobookrequest` | `8000` | `8000` (défaut) | le service **`tailscale`** | `http://homeserver:8000` |
+| `chaptarr` | `8789` | `8789` | le service `chaptarr` lui-même | `http://<hôte>:8789` |
+
+Ports utilisés *entre* conteneurs lors du remplissage des écrans de configuration :
+
+| Depuis | Vers | Adresse à saisir |
+|---|---|---|
+| Chaptarr | qBittorrent | `qbittorrent` : `8080` |
+| Prowlarr | Chaptarr | `http://chaptarr:8789` |
+| AudioBookRequest | Prowlarr | `http://prowlarr:9696` |
+| AudioBookRequest | qBittorrent | `http://qbittorrent:8080` |
+| AudioBookRequest | Audiobookshelf | `http://localhost:13378` (même espace réseau que Tailscale) |
+
+> [!WARNING]
+> `audiobookshelf` et `audiobookrequest` utilisent `network_mode: service:tailscale` : **leurs ports doivent être déclarés dans le bloc `ports:` du service `tailscale`**, pas sur leur propre service. Si vous changez `13378` ou `8000`, changez-le aux *deux* endroits (la liste `ports:` de `tailscale` et la variable `PORT` de l'application).
+>
+> Comme ils partagent l'espace réseau de Tailscale, ces deux conteneurs se joignent entre eux via `localhost`, mais joignent `prowlarr` / `qbittorrent` / `chaptarr` par leur nom de conteneur.
+
 Convention de dossiers sous `${COMMON_PATH}` (`/VOTRE_CHEMIN/Isyrr`) :
 
 ```
@@ -1476,28 +1499,81 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
 
 **0. Créez les dossiers** (voir [Livres audio](#livres-audio)) puis démarrez `tailscale-docker-compose-audiobooks.yaml`.
 
-**1. Chaptarr** – `http://<hôte>:8789`
-   - **Settings** > **Media Management** > **Add Root Folder** : `/audiobooks` (et `/ebooks` pour les ebooks).
-   - **Settings** > **Download Clients** > **+** > **qBittorrent** : **Host** `qbittorrent`, **Port** `8080`, identifiants comme dans qBittorrent, **Category** `chaptarr`.
-   - Dans qBittorrent, ajoutez une catégorie `chaptarr` avec le chemin de sauvegarde `/downloads/chaptarr`.
-   - Les indexeurs viennent de Prowlarr (étape suivante), rien à ajouter manuellement ici.
+**1. qBittorrent** – créez d'abord la catégorie de téléchargement
 
-**2. Prowlarr** – ajoutez les indexeurs livres et synchronisez vers Chaptarr
-   - **Indexers** > **Add Indexer** : ajoutez des trackers gérant livres audio / ebooks.
-   - **Settings** > **Apps** > **+** > **Chaptarr** (ou *Readarr* si Chaptarr n'est pas listé) : **Prowlarr Server** `http://prowlarr:9696`, **Serveur [Chaptarr]** `http://chaptarr:8789`, **API Key** depuis Chaptarr **Settings** > **General**. **Test**, **Save**.
+   Sans cela, Chaptarr signalera une erreur « directory does not exist » (même comportement que Radarr).
 
-**3. Audiobookshelf** – `http://homeserver:13378`
-   - Créez le compte administrateur au premier lancement.
-   - **Settings** > **Libraries** > **Add Library** : type *Books*, dossier `/audiobooks` (ajoutez une seconde bibliothèque pour `/books` si vous gardez des ebooks).
-   - Installez l'application mobile et pointez-la sur `http://homeserver:13378`.
+   - Sur l'hôte : `mkdir -p ${COMMON_PATH}/qbittorrent/downloads/chaptarr`
+   - Interface web (`http://localhost:8080`) > dépliez **CATEGORIES** > clic droit sur **All** > **Add category...**
+     - **Category** : `chaptarr`
+     - **Save path** : `/downloads/chaptarr`
+   - Cliquez sur **Add**.
 
-**4. AudioBookRequest** – `http://homeserver:8000`
-   - Créez le compte administrateur.
-   - Configurez l'URL + la clé API de **Prowlarr** et le **client de téléchargement** (qBittorrent) dans ses paramètres pour que les demandes approuvées soient récupérées automatiquement.
-   - Optionnellement, connectez Audiobookshelf pour qu'il sache ce que vous possédez déjà.
+**2. Chaptarr** – `http://<hôte>:8789`
+
+   Créez le compte administrateur au premier lancement, puis :
+
+   | Où | Champ | Valeur |
+   |---|---|---|
+   | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/audiobooks` |
+   | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/ebooks` *(seulement si vous gardez des ebooks)* |
+   | **Settings** > **Media Management** > *Show Advanced* > **Importing** | Use Hardlinks instead of Copy | **activé** |
+   | **Settings** > **Download Clients** > **+** > **qBittorrent** | Host | `qbittorrent` |
+   | | Port | `8080` |
+   | | Username / Password | comme dans qBittorrent |
+   | | Category | `chaptarr` |
+
+   Cliquez sur **Test** (une coche verte doit apparaître), puis **Save**. N'ajoutez **pas** d'indexeurs ici — Prowlarr les pousse à l'étape suivante.
+
+   Notez la clé API dans **Settings** > **General** > **API Key**, elle sert plus bas.
+
+**3. Prowlarr** – `http://localhost:9696` – ajoutez les indexeurs livres et synchronisez-les vers Chaptarr
+
+   - **Indexers** > **Add Indexer** : ajoutez des trackers proposant livres audio / ebooks (catégories *Audio > Audiobook* et *Books*). Testez et enregistrez chacun.
+   - **Settings** > **Apps** > **+** > **Chaptarr** (choisissez *Readarr* si Chaptarr n'est pas encore dans la liste — l'API est compatible) :
+
+     | Champ | Valeur |
+     |---|---|
+     | Sync Level | `Full Sync` |
+     | Prowlarr Server | `http://prowlarr:9696` |
+     | Chaptarr Server | `http://chaptarr:8789` |
+     | API Key | la clé Chaptarr de l'étape 2 |
+
+   - **Test**, puis **Save**. Vos indexeurs apparaissent alors automatiquement dans Chaptarr.
+
+**4. Audiobookshelf** – `http://homeserver:13378`
+
+   - Créez le compte administrateur au premier lancement (compte *serveur*, distinct de Jellyfin).
+   - **Settings** > **Libraries** > **Add Library** :
+
+     | Champ | Valeur |
+     |---|---|
+     | Nom | `Audiobooks` |
+     | Type de média | `Books` |
+     | Dossier | `/audiobooks` |
+
+   - Ajoutez une seconde bibliothèque pointant sur `/books` si vous gardez des ebooks.
+   - **Settings** > **Users** pour ajouter des comptes aux autres auditeurs (chacun a sa propre synchronisation de progression).
+   - Applications mobiles (iOS/Android) : ajoutez le serveur `http://homeserver:13378` — l'appareil doit être sur votre tailnet.
+
+**5. AudioBookRequest** – `http://homeserver:8000`
+
+   - Créez le compte administrateur au premier lancement, puis dans ses paramètres :
+
+     | Paramètre | Valeur |
+     |---|---|
+     | URL de base Prowlarr | `http://prowlarr:9696` |
+     | Clé API Prowlarr | depuis Prowlarr **Settings** > **General** |
+     | Client de téléchargement | qBittorrent — `http://qbittorrent:8080`, mêmes identifiants, catégorie `chaptarr` |
+
+   - La recherche s'appuie sur le catalogue Audible, aucun identifiant supplémentaire n'est requis pour les recherches.
+   - Choisissez le mode d'authentification (*open* / *basic* / *forms*) avant d'ouvrir l'accès à d'autres utilisateurs.
 
 > [!NOTE]
-> AudioBookRequest et Chaptarr sont des projets jeunes. Épinglez des tags d'image explicites et consultez leurs dépôts avant toute mise à jour. Chaptarr est explicitement en **bêta**.
+> AudioBookRequest et Chaptarr sont des projets jeunes et leurs écrans de configuration bougent d'une version à l'autre — si un nom de champ ci-dessus ne correspond pas, consultez la documentation du projet. Épinglez des tags d'image explicites et lisez les notes de version avant toute mise à jour. Chaptarr est explicitement en **bêta**.
+
+> [!TIP]
+> Deux chemins se recoupent volontairement : **AudioBookRequest** est l'interface « demander un livre » (façon Jellyseerr), tandis que **Chaptarr** est le gestionnaire de bibliothèque complet (façon Radarr) qui surveille les auteurs et met à niveau les fichiers. Vous pouvez n'en utiliser qu'un seul — AudioBookRequest + Prowlarr + Audiobookshelf est la configuration la plus légère si vous n'avez pas besoin de surveillance.
 
 **[`^        retour au sommaire        ^`](#table-des-matières)**
 
