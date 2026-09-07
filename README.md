@@ -1769,8 +1769,15 @@ Once the torrent completes, Chaptarr imports it into `/audiobooks` (hardlinked, 
 
 #### **B. Download via Shelfarr (request flow)**
 
-1. Search for a title from the home page.
-2. Click **Request**. An admin's own request is queued for searching immediately; anyone else's waits for approval.
+> [!IMPORTANT]
+> **"I only see ebooks — where are the audiobooks?"**
+>
+> There is no audiobook filter in search, and that is by design. Shelfarr's search dropdown offers only **All**, **Books** and **Comics & Manga**, because metadata providers (Hardcover, OpenLibrary, Google Books) index *works*, not formats — a title is one entry whether it exists as audio or text.
+>
+> **You pick the format at the request step, not the search step.** After clicking **Request**, a **"Select format(s)"** fieldset appears with three cards — **Audiobook**, **Ebook**, **Comics & Manga**. Tick **Audiobook** (and untick Ebook). Only then does Shelfarr search your indexers using the audiobook category (`3030`) and route the result to `/audiobooks`.
+
+1. Search for a title from the home page, with content kind **All** or **Books**.
+2. Click **Request**, then tick **Audiobook** under *Select format(s)*. An admin's own request is queued for searching immediately; anyone else's waits for approval.
 3. Shelfarr queries Prowlarr (plus any direct sources you enabled), scores the results against your format and language preferences, and either picks the best automatically or presents the list for you to choose.
 4. The release is sent to qBittorrent under the `shelfarr` category.
 5. When it finishes, **Shelfarr renames and organises the files itself** and delivers them into `/audiobooks`, then triggers an Audiobookshelf scan if you connected it.

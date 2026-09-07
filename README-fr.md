@@ -1780,8 +1780,15 @@ Une fois le torrent terminé, Chaptarr l'importe dans `/audiobooks` (en hardlink
 
 #### **B. Télécharger via Shelfarr (flux de demande)**
 
-1. Cherchez un titre depuis la page d'accueil.
-2. Cliquez sur **Request**. La demande d'un admin est mise en file de recherche immédiatement ; celle des autres attend une approbation.
+> [!IMPORTANT]
+> **« Je ne vois que des ebooks — où sont les livres audio ? »**
+>
+> Il n'y a pas de filtre « livre audio » dans la recherche, et c'est voulu. Le menu déroulant de Shelfarr ne propose que **All**, **Books** et **Comics & Manga**, parce que les fournisseurs de métadonnées (Hardcover, OpenLibrary, Google Books) indexent des *œuvres*, pas des formats — un titre est une seule entrée, qu'il existe en audio ou en texte.
+>
+> **Le format se choisit à l'étape de la demande, pas à celle de la recherche.** Après avoir cliqué sur **Request**, un bloc **« Select format(s) »** apparaît avec trois cartes — **Audiobook**, **Ebook**, **Comics & Manga**. Cochez **Audiobook** (et décochez Ebook). C'est seulement là que Shelfarr interroge vos indexeurs avec la catégorie livre audio (`3030`) et dirige le résultat vers `/audiobooks`.
+
+1. Cherchez un titre depuis la page d'accueil, avec le type de contenu **All** ou **Books**.
+2. Cliquez sur **Request**, puis cochez **Audiobook** dans *Select format(s)*. La demande d'un admin est mise en file de recherche immédiatement ; celle des autres attend une approbation.
 3. Shelfarr interroge Prowlarr (plus les sources directes que vous avez activées), note les résultats selon vos préférences de format et de langue, et choisit le meilleur automatiquement ou vous présente la liste.
 4. La release est envoyée à qBittorrent sous la catégorie `shelfarr`.
 5. Une fois terminée, **Shelfarr renomme et organise les fichiers lui-même** et les livre dans `/audiobooks`, puis déclenche un scan Audiobookshelf si vous l'avez connecté.
