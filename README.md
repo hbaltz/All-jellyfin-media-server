@@ -13,7 +13,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
 > - **Translatarr** – automatic subtitle translation
 > - **Tailscale** – exposes Jellyfin / Jellyseerr (and the audiobook front-ends) on a private tailnet instead of publishing ports on the LAN
 > - **qbit-port-sync** – pushes the Gluetun forwarded port into qBittorrent automatically
-> - **Audiobook stack** – Audiobookshelf (player/library), AudioBookRequest (requests, à la Jellyseerr) and Chaptarr (acquisition, à la Radarr), reusing the existing Prowlarr + qBittorrent
+> - **Audiobook stack** – Audiobookshelf (player/library), Shelfarr (requests + import, the Jellyseerr of books) and Chaptarr (optional monitoring, à la Radarr), reusing the existing Prowlarr + qBittorrent
 >
 > See [**Added services**](#added-services-fork) and [**Audiobooks**](#audiobooks) below, and the compose files under [`compose_files/VPN-Only/`](compose_files/VPN-Only/) (`tailscale-docker-compose.yaml`, `tailscale-docker-compose-audiobooks.yaml`).
 
@@ -50,7 +50,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**qbit-port-sync**](#qbit-port-sync)
   - [**Audiobooks**](#audiobooks)
     - [**Audiobookshelf**](#audiobookshelf)
-    - [**AudioBookRequest**](#audiobookrequest)
+    - [**Shelfarr**](#shelfarr)
     - [**Chaptarr**](#chaptarr)
 - [**Prerequisites**](#prerequisites)
   - [**Docker**](#docker)
@@ -115,7 +115,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**Configure Languages**](#configure-languages)
     - [**Configure Subtitles**](#configure-subtitles)
   - [**Tailscale**](#tailscale-1)
-  - [**Audiobooks (Audiobookshelf / AudioBookRequest / Chaptarr)**](#audiobooks-audiobookshelf--audiobookrequest--chaptarr)
+  - [**Audiobooks (Audiobookshelf / Shelfarr / Chaptarr)**](#audiobooks-audiobookshelf--shelfarr--chaptarr)
 - [**Updating Applications**](#updating-applications)
 - [**Disclaimer**](#disclaimer)
 
@@ -245,7 +245,7 @@ These services are **not part of the upstream project**. They are wired into the
 
 - Image: `tailscale/tailscale:latest`
 - Requires an auth key in `TS_AUTHKEY` (set inside the compose file), `/dev/net/tun`, and `NET_ADMIN` + `SYS_MODULE` capabilities.
-- Every port that a co-networked container needs **must be listed on the `tailscale` service** `ports:` block (that is why `13378` and `8000` are added there for the audiobook stack).
+- Every port that a co-networked container needs **must be listed on the `tailscale` service** `ports:` block (that is why `13378` and `5056` are added there for the audiobook stack).
 - State: `configs/tailscale:/var/lib/tailscale`
 
 > [!IMPORTANT]
@@ -264,7 +264,7 @@ An optional audiobook pipeline that mirrors the movies/TV layout and **reuses th
 | Service | Role | Equivalent | Network | Access |
 |---|---|---|---|---|
 | `audiobookshelf` | player / library | Jellyfin | `service:tailscale` | `http://homeserver:13378` |
-| `audiobookrequest` | request front-end | Jellyseerr | `service:tailscale` | `http://homeserver:8000` |
+| `shelfarr` | requests **+ import** | Jellyseerr | `service:tailscale` | `http://homeserver:5056` |
 | `chaptarr` | acquisition manager | Radarr | bridge | `http://<host>:8789` |
 
 #### **Ports**
@@ -272,7 +272,7 @@ An optional audiobook pipeline that mirrors the movies/TV layout and **reuses th
 | Service | Host port | Container port | Declared on | Reachable at |
 |---|---|---|---|---|
 | `audiobookshelf` | `13378` | `13378` (`PORT=13378`) | the **`tailscale`** service | `http://homeserver:13378` |
-| `audiobookrequest` | `8000` | `8000` (default) | the **`tailscale`** service | `http://homeserver:8000` |
+| `shelfarr` | `5056` | `5056` (`HTTP_PORT=5056`) | the **`tailscale`** service | `http://homeserver:5056` |
 | `chaptarr` | `8789` | `8789` | the `chaptarr` service itself | `http://<host>:8789` |
 
 #### **Container hostnames — read this before filling in any config screen**
@@ -280,7 +280,7 @@ An optional audiobook pipeline that mirrors the movies/TV layout and **reuses th
 > [!CAUTION]
 > **`qbittorrent` is not a valid hostname in this stack.** qBittorrent runs with `network_mode: service:gluetun`, so it has no network identity of its own — Docker's DNS has no record for it. Worse, on many ISPs the name then leaks to public DNS and silently resolves to an unrelated public server (on Numericable/SFR, `qbittorrent` resolves to `qbittorrent.numericable.fr`). The connection test will fail, or hang, for reasons that look nothing like DNS.
 >
-> **Use `gluetun` instead.** The same applies to Jellyfin, Jellyseerr, Audiobookshelf and AudioBookRequest, which live in the `tailscale` namespace and answer on `tailscale`.
+> **Use `gluetun` instead.** The same applies to Jellyfin, Jellyseerr, Audiobookshelf and Shelfarr, which live in the `tailscale` namespace and answer on `tailscale`.
 
 The rule: a container declared with `network_mode: service:X` is addressed as **`X`**, not by its own name.
 
@@ -288,7 +288,7 @@ The rule: a container declared with `network_mode: service:X` is addressed as **
 |---|---|---|---|
 | qBittorrent | `service:gluetun` | **`gluetun:8080`** | HTTP 200 |
 | Audiobookshelf | `service:tailscale` | **`tailscale:13378`** | HTTP 200 |
-| AudioBookRequest | `service:tailscale` | **`tailscale:8000`** | HTTP 302 |
+| Shelfarr | `service:tailscale` | **`tailscale:5056`** | HTTP 302 |
 | Jellyfin | `service:tailscale` | **`tailscale:8096`** | |
 | Jellyseerr | `service:tailscale` | **`tailscale:5055`** | |
 | Chaptarr | *(bridge)* | `chaptarr:8789` | HTTP 200 |
@@ -301,9 +301,9 @@ So, the addresses to type into each config screen:
 | From | To | Address to enter |
 |---|---|---|
 | Chaptarr | qBittorrent | Host `gluetun`, Port `8080` |
-| AudioBookRequest | qBittorrent | `http://gluetun:8080` |
-| AudioBookRequest | Prowlarr | `http://prowlarr:9696` |
-| AudioBookRequest | Audiobookshelf | `http://localhost:13378` *(same namespace — localhost works)* |
+| Shelfarr | qBittorrent | `http://gluetun:8080` |
+| Shelfarr | Prowlarr | `http://prowlarr:9696` |
+| Shelfarr | Audiobookshelf | `http://localhost:13378` *(same namespace — localhost works)* |
 | Prowlarr | Chaptarr | `http://chaptarr:8789` |
 | Radarr / Sonarr / Bazarr | qBittorrent | Host `gluetun`, Port `8080` |
 
@@ -311,21 +311,21 @@ So, the addresses to type into each config screen:
 > This corrects the upstream instructions further down, which tell you to enter `qbittorrent` as the Host for Radarr and Sonarr. That advice predates the VPN variants; with `network_mode: service:gluetun` it cannot work. Use `gluetun`.
 
 > [!WARNING]
-> `audiobookshelf` and `audiobookrequest` use `network_mode: service:tailscale`, so **their ports must be declared in the `tailscale` service's `ports:` block**, not on their own service. If you change `13378` or `8000`, change it in *both* places (the `tailscale` `ports:` list and the app's `PORT` env).
+> `audiobookshelf` and `shelfarr` use `network_mode: service:tailscale`, so **their ports must be declared in the `tailscale` service's `ports:` block**, not on their own service. If you change `13378` or `5056`, change it in *both* places (the `tailscale` `ports:` list and the app's `PORT` env).
 >
 > Containers sharing a namespace reach each other over `localhost`. Everything else is reached by the namespace owner's name, per the table above.
 
 Directory convention under `${COMMON_PATH}` (`/YOUR_PATH/Isyrr`):
 
 ```
-configs/audiobookshelf      configs/audiobookrequest      configs/chaptarr
+configs/audiobookshelf      configs/shelfarr      configs/chaptarr
 chaptarr/audiobooks         chaptarr/ebooks              audiobookshelf/metadata
 ```
 
 Create them once before the first `up`:
 
 ```bash
-mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,audiobookrequest,chaptarr} \
+mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,shelfarr,chaptarr} \
          ${COMMON_PATH}/chaptarr/{audiobooks,ebooks} \
          ${COMMON_PATH}/audiobookshelf/metadata
 ```
@@ -338,13 +338,18 @@ mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,audiobookrequest,chaptarr} \
 - Runs with `network_mode: service:tailscale`, `PORT=13378`
 - Mounts: `configs/audiobookshelf:/config`, `audiobookshelf/metadata:/metadata`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/books`
 
-### **AudioBookRequest**
+### **Shelfarr**
 
-[AudioBookRequest](https://github.com/markbeep/AudioBookRequest) is a request/wishlist front-end in the spirit of Overseerr/Jellyseerr, but for audiobooks: it searches via the Audible catalogue and hands downloads to Prowlarr / your download client.
+[Shelfarr](https://shelfarr.org/) is the books equivalent of Jellyseerr: browse, request, and the book turns up in your library. Crucially it owns the **whole** chain — it searches Prowlarr, sends the release to qBittorrent, then renames, organises and delivers the finished files into the Audiobookshelf library.
 
-- Image: **`markbeep/audiobookrequest:1`** (Docker Hub — *not* `ghcr.io`; the `1` tag tracks the v1.x line)
-- Runs with `network_mode: service:tailscale`, port `8000`
-- Mounts: `configs/audiobookrequest:/config`
+That last step is why it is used here rather than a request-only front-end: tools that stop at "torrent downloaded" leave you to move and rename files by hand, because there is no *arr behind them doing the import.
+
+- Image: **`ghcr.io/pedro-revez-silva/shelfarr:latest`** (pin the version with `SHELFARR_VERSION` in `.env`)
+- Runs with `network_mode: service:tailscale`, `HTTP_PORT=5056` — deliberately next door to Jellyseerr's `5055`
+- Mounts: `configs/shelfarr:/rails/storage`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/ebooks`, `qbittorrent/downloads:/downloads`
+- A secret key is generated on first run and saved to `/rails/storage` — no manual key setup
+- Also supports direct sources (Anna's Archive, Z-Library, LibriVox) and an optional Libation companion for Audible backups, left commented out in the compose file
+- Only hard requirement: one way to find books, and somewhere to put them
 
 ### **Chaptarr**
 
@@ -1036,7 +1041,7 @@ This fork adds two Tailscale-based compose files in `compose_files/VPN-Only/`:
 | File | Contents |
 |---|---|
 | `tailscale-docker-compose.yaml` | Tailscale + Jellyfin + Jellyseerr + Gluetun + qBittorrent + qbit-port-sync + FlareSolverr + Prowlarr + Sonarr + Radarr + Bazarr + Translatarr |
-| `tailscale-docker-compose-audiobooks.yaml` | Everything above **plus** Audiobookshelf + AudioBookRequest + Chaptarr |
+| `tailscale-docker-compose-audiobooks.yaml` | Everything above **plus** Audiobookshelf + Shelfarr + Chaptarr |
 
 Create the audiobook directories first (see [Audiobooks](#audiobooks)), then:
 
@@ -1073,12 +1078,12 @@ Added by this fork:
 * Bazarr : http://localhost:6767
 * Translatarr : http://localhost:6868
 
-When using a **Tailscale** compose file, Jellyfin / Jellyseerr / Audiobookshelf / AudioBookRequest are reachable over the tailnet instead of `localhost`:
+When using a **Tailscale** compose file, Jellyfin / Jellyseerr / Audiobookshelf / Shelfarr are reachable over the tailnet instead of `localhost`:
 
 * Jellyfin : http://homeserver:8096
 * Jellyseerr : http://homeserver:5055
 * Audiobookshelf : http://homeserver:13378
-* AudioBookRequest : http://homeserver:8000
+* Shelfarr : http://homeserver:5056
 * Chaptarr : http://localhost:8789 *(LAN only, not on the tailnet)*
 
 Gluetun (Nord VPN) will be automatically configured to be used with the applications.
@@ -1509,7 +1514,7 @@ Once configured, Bazarr will automatically monitor your Sonarr and Radarr librar
 
 ---
 
-## **Audiobooks (Audiobookshelf / AudioBookRequest / Chaptarr)**
+## **Audiobooks (Audiobookshelf / Shelfarr / Chaptarr)**
 
 **0. Create the folders** (see [Audiobooks](#audiobooks)) and start `tailscale-docker-compose-audiobooks.yaml`.
 
@@ -1593,32 +1598,147 @@ Once configured, Bazarr will automatically monitor your Sonarr and Radarr librar
    - **Settings** > **Users** to add accounts for other listeners (each gets its own progress sync).
    - Mobile apps (iOS/Android): add the server as `http://homeserver:13378` — the device must be on your tailnet.
 
-**5. AudioBookRequest** – `http://homeserver:8000`
+**5. Shelfarr** – `http://homeserver:5056`
 
-   - Create the admin account on first launch, then in its settings:
+   Create the admin account on first launch, then work through **Settings**:
 
-     | Setting | Value |
-     |---|---|
-     | Prowlarr base URL | `http://prowlarr:9696` |
-     | Prowlarr API key | from Prowlarr **Settings** > **General** |
-     | Download client | qBittorrent |
-     | qBittorrent URL | **`http://gluetun:8080`** *(not `qbittorrent`)* |
-     | qBittorrent user / password | same as the qBittorrent WebUI |
-     | Category | `chaptarr` |
-     | Audiobookshelf URL *(optional)* | `http://localhost:13378` — same namespace, so `localhost` is correct here |
+   **a. Indexer** — how it finds books
 
-   - Search is powered by the Audible catalogue, so no extra credentials are needed for lookups.
-   - Set the auth mode (*open* / *basic* / *forms*) before exposing it to other users.
+   | Setting | Value |
+   |---|---|
+   | Type | Prowlarr |
+   | Base URL | `http://prowlarr:9696` |
+   | API key | from Prowlarr **Settings** > **General** |
+   | Categories | Audiobook `3030`, Books `7000`/`7020`, Other `8000`/`8010` |
+
+   **b. Download client** — how it fetches them
+
+   | Setting | Value |
+   |---|---|
+   | Type | qBittorrent |
+   | Host / URL | **`gluetun`** port `8080` — *not* `qbittorrent`, see [Container hostnames](#container-hostnames--read-this-before-filling-in-any-config-screen) |
+   | Username / Password | same as the qBittorrent WebUI |
+   | Category | `shelfarr` (create it in qBittorrent with save path `/downloads/shelfarr`) |
+
+   **c. Library paths** — where finished books go
+
+   | Setting | Value |
+   |---|---|
+   | Audiobooks folder | `/audiobooks` |
+   | Ebooks folder | `/ebooks` |
+   | Downloads folder | `/downloads` |
+
+   **d. Audiobookshelf** *(optional but recommended)* — metadata enrichment and automatic library scans
+
+   | Setting | Value |
+   |---|---|
+   | URL | `http://localhost:13378` — same namespace, so `localhost` is correct here |
+   | API token | Audiobookshelf **Settings** > **Users** > your user > *API Token* |
+
+   **e. Metadata provider — required, and the usual first stumble**
+
+   Shelfarr needs a working metadata source to search at all. Its priority order is `hardcover, openlibrary, google_books, comic_vine`, and out of the box **none of them work reliably**:
+
+   | Provider | Out-of-the-box state | Fix |
+   |---|---|---|
+   | Hardcover | Enabled but **no token** → fails | Sign up at [hardcover.app](https://hardcover.app/), then **Account Settings** > **API** and paste the token. Free, book-focused — **do this one** |
+   | OpenLibrary | Works, but one bad response marks it `degraded` and it stops being tried; the state **survives a container restart** | Recovers on its own after the cooldown, or re-enable it in Settings |
+   | Google Books | Anonymous quota is shared globally and is usually **already exhausted** (`HTTP 429`) | Add a free API key from the [Google Cloud console](https://console.cloud.google.com/) (enable the Books API) |
+
+   > [!CAUTION]
+   > If you see **"Unable to connect to metadata service. Please try again later."**, this is why — it is not a network fault. Check `docker logs shelfarr | grep MetadataService`; you will see `Skipping openlibrary: degraded` and `Skipping google_books: rate_limited`. Set a **Hardcover token** and it clears.
+
+   **f. Access** — set the login mode and, if you want, OIDC/2FA before letting others in.
 
 > [!NOTE]
-> AudioBookRequest and Chaptarr are young projects, and their settings screens move between releases — if a field name above does not match, check the project's own docs. Pin explicit image tags and read the release notes before upgrading. Chaptarr is explicitly **beta**.
+> Shelfarr and Chaptarr are young projects and their settings screens move between releases — if a field name above does not match, check the project's own docs. Pin explicit image tags (`SHELFARR_VERSION`) and read the release notes before upgrading. Chaptarr is explicitly **beta**.
 
 > [!TIP]
-> Two overlapping paths exist on purpose: **AudioBookRequest** is the "ask for a book" front-end (à la Jellyseerr), while **Chaptarr** is the full library manager (à la Radarr) that monitors authors and upgrades files. You can run either alone — AudioBookRequest + Prowlarr + Audiobookshelf is the lighter setup if you do not need monitoring.
+> **Do you need both Shelfarr and Chaptarr?** Probably not.
+>
+> - **Shelfarr alone** — the Jellyseerr experience. Browse, request, done: it searches, downloads, organises and delivers into Audiobookshelf. Simplest, and what most people want.
+> - **Chaptarr alone** — the Radarr experience. No request UI, but it *monitors* authors and automatically grabs future releases and quality upgrades.
+> - **Both** — only if you want Shelfarr's request flow *and* Chaptarr's ongoing monitoring. Give each its own qBittorrent category (`shelfarr` / `chaptarr`) so they never fight over the same download.
+
+### **Tutorial: your first audiobook**
+
+Everything above is wiring. This walks the whole chain once, end to end.
+
+#### **Step 0 — verify the plumbing (2 min)**
+
+Run these four checks from the host. All four must pass before searching.
+
+```bash
+# 1. qBittorrent is behind the VPN — these two MUST differ
+docker exec GlueTun-VPN wget -qO- https://api.ipify.org/   # VPN exit IP
+curl -s https://api.ipify.org/                             # your real IP
+
+# 2. A port is being forwarded (a number, not empty)
+cat ${COMMON_PATH}/gluetun/forwarded_port
+
+# 3. The chaptarr download folder exists inside the container
+docker exec qbittorrent ls -ld /downloads/chaptarr
+
+# 4. Chaptarr has indexers, and no health warnings
+KEY=$(grep -oP '(?<=<ApiKey>)[^<]+' ${COMMON_PATH}/configs/chaptarr/config.xml | head -1)
+curl -s -H "X-Api-Key: $KEY" http://localhost:8789/api/v1/indexer | grep -o '"name"' | wc -l
+curl -s -H "X-Api-Key: $KEY" http://localhost:8789/api/v1/health
+```
+
+Check 4 must print a number greater than `0` and then `[]` (empty = no warnings). If it prints `0`, Chaptarr has no indexers — go back to step 3 of the configuration guide.
+
+> [!IMPORTANT]
+> The `chaptarr` category in qBittorrent must have a **save path**. A category created with an empty save path silently sends downloads to the default folder and Chaptarr never imports them. Check **CATEGORIES** > right-click `chaptarr` > **Edit category**: *Save path* must read `/downloads/chaptarr`.
+
+#### **Step 1 — add the book in Chaptarr**
+
+1. Open `http://<host>:8789` > **Library** > **Add New**.
+2. Type an author or title (e.g. `Brandon Sanderson`) and pick the result you want.
+3. Fill the dialog:
+
+   | Field | Value |
+   |---|---|
+   | Root Folder | `/audiobooks` |
+   | Monitor | `All Books` — or `None` if you only want this one title |
+   | Quality Profile | `Audiobook` |
+   | Metadata Profile | `Audiobook Default` |
+   | Search for missing books | ✅ ticked |
+
+4. Click **Add**. Chaptarr queries every synced indexer immediately.
+
+> Choosing the `Audiobook` quality profile (not `E-Book`) is what keeps it from grabbing an EPUB.
+
+#### **Step 2 — watch it grab**
+
+- **Chaptarr** > **Activity** > **Queue** — the release appears within a few seconds.
+- **qBittorrent** (`http://localhost:8080`) — the torrent is there under category `chaptarr`, saving to `/downloads/chaptarr`.
+
+If the queue stays empty, do a manual search instead: open the book > click the **magnifying glass** > review the release list > click the **download arrow** on a well-seeded one. This also tells you *why* automatic grabbing was rejected — hover the release for the reason (wrong format, quality profile mismatch, etc.).
+
+#### **Step 3 — import**
+
+When the torrent completes, Chaptarr hardlinks it into `/audiobooks/<Author>/<Title>/` and keeps seeding from `/downloads/chaptarr`. Confirm:
+
+```bash
+ls -R ${COMMON_PATH}/chaptarr/audiobooks | head -20
+```
+
+If the file downloaded but never moved, it is almost always the category save-path mismatch from Step 0.
+
+#### **Step 4 — listen**
+
+1. Open Audiobookshelf: `http://homeserver:13378`.
+2. **Settings** > **Libraries** > your Audiobooks library > **Scan** (it also scans on a schedule).
+3. The book appears with cover and chapters. Open it in the browser, or in the iOS/Android app pointed at `http://homeserver:13378` — progress syncs across both.
+
+> [!TIP]
+> **Prefer the Jellyseerr experience?** Skip Chaptarr entirely and use **Shelfarr** (`http://homeserver:5056`): search, click **Request**, and it searches Prowlarr, downloads via qBittorrent, organises the files and drops them into your Audiobookshelf library on its own. Steps 1–3 above collapse into one click.
+
+---
 
 ### **Launching a torrent download**
 
-Everything above is wiring. This is the part that actually pulls a file.
+Reference material for later downloads.
 
 #### **Prerequisites checklist**
 
@@ -1647,13 +1767,14 @@ Run through this before your first search — a miss here is the usual cause of 
 
 Once the torrent completes, Chaptarr imports it into `/audiobooks` (hardlinked, so seeding continues), and Audiobookshelf picks it up on its next scan — or immediately via **Settings** > **Libraries** > *Scan*.
 
-#### **B. Download via AudioBookRequest (request flow)**
+#### **B. Download via Shelfarr (request flow)**
 
-1. Search for a title from the home page — results come from the Audible catalogue.
-2. Click **Request**.
-3. Depending on your auth mode, the request is either auto-approved or waits in **Wishlist** for an admin to approve it.
-4. On approval, AudioBookRequest queries Prowlarr and sends the chosen release to qBittorrent.
-5. Follow it in qBittorrent, then in Audiobookshelf once the file lands.
+1. Search for a title from the home page.
+2. Click **Request**. An admin's own request is queued for searching immediately; anyone else's waits for approval.
+3. Shelfarr queries Prowlarr (plus any direct sources you enabled), scores the results against your format and language preferences, and either picks the best automatically or presents the list for you to choose.
+4. The release is sent to qBittorrent under the `shelfarr` category.
+5. When it finishes, **Shelfarr renames and organises the files itself** and delivers them into `/audiobooks`, then triggers an Audiobookshelf scan if you connected it.
+6. The book appears in Audiobookshelf. No manual moving — this import step is what separates Shelfarr from request-only front-ends.
 
 #### **Troubleshooting**
 

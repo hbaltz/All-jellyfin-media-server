@@ -13,7 +13,7 @@ services:
       - 5055:5055
       # ↓ ADDED — audiobook front-ends sharing this netns
       - 13378:13378   # audiobookshelf
-      - 8000:8000     # audiobookrequest
+      - 5056:5056     # shelfarr (requests — the Jellyseerr of books, next to jellyseerr's 5055)
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -227,11 +227,11 @@ services:
   #  AUDIOBOOKS  (new)
   #  Layout mirrors the movies/tv stack:
   #    - audiobookshelf  = player/library      (like jellyfin)   -> tailnet
-  #    - audiobookrequest = request front-end  (like jellyseerr) -> tailnet
+  #    - shelfarr         = requests + import  (like jellyseerr) -> tailnet
   #    - chaptarr        = acquisition manager  (like radarr)     -> LAN only
   #  Reuses the existing Prowlarr + qBittorrent.
   #  Create the dirs once:
-  #    mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,audiobookrequest,chaptarr} \
+  #    mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,shelfarr,chaptarr} \
   #             ${COMMON_PATH}/chaptarr/{audiobooks,ebooks} \
   #             ${COMMON_PATH}/audiobookshelf/metadata
   # ══════════════════════════════════════════════════════════
@@ -254,21 +254,65 @@ services:
       - ${COMMON_PATH}/chaptarr/ebooks:/books
     restart: unless-stopped
 
-  # ── AUDIOBOOKREQUEST ──────────────────────────────────────
-  # "Jellyseerr for audiobooks": Audible search + push to Prowlarr/qBittorrent.
-  # Web UI over Tailscale: http://homeserver:8000
-  audiobookrequest:
-    image: markbeep/audiobookrequest:1   # Docker Hub (NOT ghcr.io); tag "1" tracks the v1.x line
-    container_name: audiobookrequest
+  # ── SHELFARR ──────────────────────────────────────────────
+  # "Jellyseerr for books": browse -> request -> search Prowlarr -> download
+  # via qBittorrent -> rename/organise -> deliver into the Audiobookshelf
+  # library. Unlike AudioBookRequest it owns the import step, so files land in
+  # /audiobooks organised, not in a download folder waiting to be moved.
+  # Web UI over Tailscale: http://homeserver:5056
+  shelfarr:
+    image: ghcr.io/pedro-revez-silva/shelfarr:${SHELFARR_VERSION:-latest}
+    container_name: shelfarr
     network_mode: service:tailscale
     depends_on:
       - tailscale
     environment:
+      - SOLID_QUEUE_IN_PUMA=1
+      - HTTP_PORT=5056          # must match the port opened on the tailscale service
+      - PUID=0                  # matches the rest of this stack; media dirs are root-owned
+      - PGID=0
+      - CHOWN_ON_START=auto
       - TZ=${TZ}
-      # default listen port is 8000 (matches the port opened on the tailscale service)
+      # A secret key is auto-generated on first run and saved to /rails/storage.
     volumes:
-      - ${COMMON_PATH}/configs/audiobookrequest:/config
+      - ${COMMON_PATH}/configs/shelfarr:/rails/storage
+      - ${COMMON_PATH}/chaptarr/audiobooks:/audiobooks
+      - ${COMMON_PATH}/chaptarr/ebooks:/ebooks
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5056/up"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
+
+  # ── OPTIONAL: SHELFARR LIBATION COMPANION ─────────────────
+  # Audible backup (beta). Idle until you connect an Audible account in
+  # Shelfarr's admin UI. Internal only - no host port, no Docker socket.
+  # If you enable it, also add to shelfarr:
+  #   SHELFARR_LIBATION_URL=http://shelfarr-libation:8080
+  #   SHELFARR_LIBATION_TOKEN_FILE=/run/shelfarr-libation/token
+  #   SHELFARR_LIBATION_IMPORT_ROOT=/imports/libation
+  #   volumes: libation_books:/imports/libation:ro and libation_control:/run/shelfarr-libation:ro
+  # shelfarr-libation:
+  #   image: ghcr.io/pedro-revez-silva/shelfarr-libation:${SHELFARR_VERSION:-latest}
+  #   container_name: shelfarr-libation
+  #   expose:
+  #     - "8080"
+  #   volumes:
+  #     - libation_config:/config
+  #     - libation_books:/data
+  #     - libation_control:/control
+  #   environment:
+  #     - PUID=0
+  #     - PGID=0
+  #     - TZ=${TZ}
+  #     - LIBATION_FILES_DIR=/config
+  #     - LIBATION_BOOKS_DIR=/data
+  #     - COMPANION_TOKEN_FILE=/control/token
+  #     - ASPNETCORE_URLS=http://0.0.0.0:8080
+  #   restart: unless-stopped
 
   # ── CHAPTARR ──────────────────────────────────────────────
   # Readarr fork (ebooks + audiobooks in one instance). Still BETA.
