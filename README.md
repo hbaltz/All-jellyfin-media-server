@@ -247,7 +247,7 @@ These services are **not part of the upstream project**. They are wired into the
 
 ### **qbit-port-sync**
 
-A tiny helper container (`curlimages/curl`) sharing Gluetun's network namespace. It reads the port Gluetun forwards from the VPN provider (`/tmp/gluetun/forwarded_port`) and calls the qBittorrent API to set it as the listening port, so inbound connectivity keeps working after the forwarded port changes. It runs once (`restart: "no"`) and relies on `scripts/qbit-port-sync.sh`.
+A tiny helper container (`curlimages/curl`) sharing Gluetun's network namespace. It reads the port Gluetun forwards from the VPN provider (`/tmp/gluetun/forwarded_port`) and calls the qBittorrent API to set it as the listening port, so inbound connectivity keeps working after the forwarded port changes. A watchdog ([`qbit-port-watch.sh`](compose_files/VPN-Only/qbit-port-watch.sh)) checks every minute that qBittorrent is listening on the VPN address with that port. If not (qBittorrent started before WireGuard was up, VPN reconnect, new port), every transfer sits at 0, so it re-runs `scripts/qbit-port-sync.sh`, which goes through port 0 to force qBittorrent to re-bind.
 
 ---
 

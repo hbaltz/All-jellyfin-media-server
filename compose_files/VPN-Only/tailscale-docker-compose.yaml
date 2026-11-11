@@ -119,9 +119,13 @@ services:
       - qbittorrent
     volumes:
       - ${COMMON_PATH}/scripts/qbit-port-sync.sh:/qbit-port-sync.sh:ro
+      - ./qbit-port-watch.sh:/qbit-port-watch.sh:ro
       - ${COMMON_PATH}/gluetun:/tmp/gluetun:ro
-    command: sh /qbit-port-sync.sh
-    restart: "no"
+    environment:
+      - WIREGUARD_ADDR=${WIREGUARD_ADDR}
+    # Re-applies the port whenever qBittorrent is not listening on the VPN address (boot, VPN reconnect, new port).
+    command: sh /qbit-port-watch.sh
+    restart: unless-stopped
 
   # ── FLARESOLVERR ──────────────────────────────────────────
   flaresolverr:
