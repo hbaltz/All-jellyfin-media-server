@@ -112,6 +112,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**Configure Languages**](#configure-languages)
     - [**Configure Subtitles**](#configure-subtitles)
   - [**Tailscale**](#tailscale-1)
+  - [**Cleanuparr**](#cleanuparr-1)
 - [**Updating Applications**](#updating-applications)
 - [**Disclaimer**](#disclaimer)
 
@@ -1405,6 +1406,34 @@ Once configured, Bazarr will automatically monitor your Sonarr and Radarr librar
 
 > [!IMPORTANT]
 > Any container that shares the tailnet namespace (`network_mode: service:tailscale`) can only publish ports through the **`tailscale`** service `ports:` list. Add the port there, not on the app container.
+
+---
+
+## **Cleanuparr**
+
+Web UI: `http://<host>:11011`. Create the admin account on the first visit, then switch **Settings** > **General** > **Dry Run** on while configuring: every action is only written to the **Logs** page until you switch it off.
+
+| Page | Setting | Value |
+|---|---|---|
+| Download Clients | qBittorrent | **Client Host** `http://gluetun:8080`, your qBittorrent WebUI login |
+| Media Managers | Sonarr / Radarr | `http://sonarr:8989` (API v4) / `http://radarr:7878` (API v6), API key from each app's **Settings** > **General** |
+| Queue Cleaner | Enabled | every 5 minutes |
+| | Failed Import | Max Strikes `3`, Pattern Mode `Exclude`, Patterns `Not enough free space`, **Force Import** on (3 tries) |
+| | Errored / Downloading Metadata | Max Strikes `3` / `3` |
+| | Stall rule | `Stalled`: Max Strikes `6`, Privacy `Both`, completion `0`-`100` %, Reset Strikes on Progress on |
+| Seeker | Search Enabled | on (replacement search after every removal); Proactive Search off |
+| Blacklist Sync | Blacklist Path | `https://raw.githubusercontent.com/Cleanuparr/Cleanuparr/refs/heads/main/blacklist` |
+| Malware Blocker | | off: qBittorrent's *Excluded file names* already block the files |
+| Download Cleaner | Seeding rule | `Seed then delete`: categories `sonarr`, `radarr`, Privacy `Public`, Max Ratio `1.1`, Min Seed Time `24` h, Max Seed Time `168` h, delete, Delete Source Files on |
+| | Orphaned Files (qBittorrent) | Scan `/downloads/sonarr` and `/downloads/radarr`, Orphaned Directory `/downloads/orphaned`, Min File Age `24` h, Purge After `168` h |
+
+What it does:
+- A torrent qBittorrent marks complete with 0 bytes because every file was excluded (fake release, often a single `.exe`) is removed from Sonarr/Radarr, blocklisted and deleted from qBittorrent within 5 minutes, then searched again. An episode that has not aired yet is simply grabbed by Sonarr's RSS sync once it airs.
+- Stalled downloads, stuck magnets and failed imports are handled the same way after their strikes; an import blocked only by naming ("matched to movie by ID") is force-imported instead.
+- Blacklist Sync refreshes qBittorrent's *Excluded file names* every hour from the community list.
+- Only the downloads folder is ever cleaned: torrents are deleted after ratio 1.1 or 7 days of seeding, and files no torrent claims anymore are moved to `/downloads/orphaned`, then purged 7 days later. The library (`sonarr/tv`, `radarr/movies`) is never touched.
+
+Switch **Dry Run** off once the Logs page shows the expected actions.
 
 **[`^        back to top        ^`](#table-of-contents)**
 
