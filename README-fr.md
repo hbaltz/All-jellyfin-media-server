@@ -236,7 +236,7 @@ Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans 
 
 ### **Tailscale**
 
-[Tailscale](https://tailscale.com/) crée un maillage WireGuard privé et chiffré (tailnet) entre vos appareils. Dans ce fork, le conteneur `tailscale` sert de **fournisseur réseau** : `jellyfin` et `jellyseerr` tournent avec `network_mode: service:tailscale` et sont donc accessibles via `http://homeserver:<port>` sur le tailnet, sans publier de ports sur le LAN.
+[Tailscale](https://tailscale.com/) crée un maillage WireGuard privé et chiffré (tailnet) entre vos appareils. Dans ce fork, le conteneur `tailscale` sert de **fournisseur réseau** : `jellyfin` et `jellyseerr` tournent avec `network_mode: service:tailscale` et sont donc accessibles via `http://balflix:<port>` sur le tailnet, sans publier de ports sur le LAN.
 
 - Image : `tailscale/tailscale:latest`
 - Nécessite une clé d'authentification dans `TS_AUTHKEY` (définie dans le fichier compose), `/dev/net/tun`, et les capacités `NET_ADMIN` + `SYS_MODULE`.
@@ -939,7 +939,7 @@ docker compose -f docker-compose-<YOUR_VPN>-vpn.yaml up -d
 ## **5. Installation avec Tailscale**
 
 > [!WARNING]
-> Si vous utilisez cette méthode, remplissez le fichier `.env` situé dans `compose_files/VPN-Only/`. Jellyfin et Jellyseerr sont servis via le **tailnet** (`http://homeserver:<port>`), pas sur `localhost`. Renseignez une `TS_AUTHKEY` valide (voir la note [Tailscale](#tailscale) sur le fait de la garder hors d'un dépôt public).
+> Si vous utilisez cette méthode, remplissez le fichier `.env` situé dans `compose_files/VPN-Only/`. Jellyfin et Jellyseerr sont servis via le **tailnet** (`http://balflix:<port>`), pas sur `localhost`. Renseignez une `TS_AUTHKEY` valide (voir la note [Tailscale](#tailscale) sur le fait de la garder hors d'un dépôt public).
 
 Ce fork ajoute un fichier compose basé sur Tailscale dans `compose_files/VPN-Only/` :
 
@@ -980,8 +980,8 @@ Ajoutés par ce fork :
 
 Avec un fichier compose **Tailscale**, Jellyfin / Jellyseerr sont accessibles via le tailnet et non `localhost` :
 
-* Jellyfin : http://homeserver:8096
-* Jellyseerr : http://homeserver:5055
+* Jellyfin : http://balflix:8096
+* Jellyseerr : http://balflix:5055
 
 Gluetun (Nord VPN) sera automatiquement configuré pour être utilisé avec les applications.
 
@@ -1411,7 +1411,7 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
    cd compose_files/VPN-Only/
    docker compose -f tailscale-docker-compose.yaml up -d
    ```
-4. Le nœud s'enregistre sous le nom **`homeserver`** dans votre tailnet. Depuis n'importe quel appareil du tailnet, ouvrez `http://homeserver:8096` (Jellyfin), `http://homeserver:5055` (Jellyseerr), etc.
+4. Le nœud s'enregistre sous le nom **`balflix`** dans votre tailnet. Depuis n'importe quel appareil du tailnet, ouvrez `http://balflix:8096` (Jellyfin), `http://balflix:5055` (Jellyseerr), etc.
 5. Pour une exposition publique en HTTPS, utilisez plutôt `tailscale serve` / `funnel` depuis l'intérieur du conteneur, ou MagicDNS + un reverse proxy.
 
 > [!IMPORTANT]
