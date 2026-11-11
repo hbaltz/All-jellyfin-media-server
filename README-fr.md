@@ -49,6 +49,7 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
     - [**Tailscale**](#tailscale)
     - [**qbit-port-sync**](#qbit-port-sync)
     - [**Cleanuparr**](#cleanuparr)
+    - [**Indexer janitor**](#indexer-janitor)
 - [**Prérequis**](#prérequis)
   - [**Docker**](#docker)
     - [**Utiliser Docker Compose :**](#utiliser-docker-compose-)
@@ -259,6 +260,20 @@ Un petit conteneur utilitaire (`curlimages/curl`) partageant l'espace réseau de
 - Interface web : `http://<hôte>:11011` (créez le compte admin à la première visite)
 - Montages : `configs/cleanuparr:/config`, `qbittorrent/downloads:/downloads` (même chemin que dans qBittorrent, pour le nettoyage *Orphaned Files* qui déplace les fichiers qu'aucun torrent ne réclame vers `/downloads/orphaned`, puis les purge)
 - Configuration : ajoutez le client qBittorrent avec **Client Host** `http://gluetun:8080`, les arrs Sonarr `http://sonarr:8989` (API v4) et Radarr `http://radarr:7878` (API v6) avec leurs clés API (**Settings** > **General** dans chaque app), puis activez le **Queue Cleaner**.
+
+### **Indexer janitor**
+
+[`indexer-janitor.py`](compose_files/VPN-Only/indexer-janitor.py) garde les indexeurs de Prowlarr en bonne santé. Cron le lance toutes les 6 heures (journal : `~/backups/indexer-janitor.log`), et Prowlarr répercute lui-même chaque changement dans Sonarr/Radarr.
+
+- **Réparer :** un indexeur sans aucune requête réussie depuis 7 jours est désactivé, donc Sonarr/Radarr cessent de l'utiliser et d'avertir à son sujet. Chaque passage reteste ceux qu'il a désactivés et les réactive dès qu'ils refonctionnent ; les indexeurs que vous avez désactivés vous-même ne sont pas touchés.
+- **Trouver :** chaque passage teste jusqu'à 5 indexeurs publics français/anglais films/séries du catalogue de Prowlarr (hors contenu adulte) et garde ceux dont le test **et** une vraie recherche réussissent, jusqu'à 30 indexeurs actifs. Un candidat refusé est retenté après 30 jours.
+- Rien de ce que vous avez configuré n'est jamais supprimé. État : `${COMMON_PATH}/configs/indexer-janitor.json`.
+
+```bash
+cd compose_files/VPN-Only/
+./indexer-janitor.py --dry-run   # voir ce qu'il changerait
+(crontab -l 2>/dev/null; echo "17 */6 * * * flock -n /tmp/indexer-janitor.lock $PWD/indexer-janitor.py >> $HOME/backups/indexer-janitor.log 2>&1") | crontab -   # installer (une fois)
+```
 
 ---
 

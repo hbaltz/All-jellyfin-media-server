@@ -49,6 +49,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
     - [**Tailscale**](#tailscale)
     - [**qbit-port-sync**](#qbit-port-sync)
     - [**Cleanuparr**](#cleanuparr)
+    - [**Indexer janitor**](#indexer-janitor)
 - [**Prerequisites**](#prerequisites)
   - [**Docker**](#docker)
     - [**Using Docker Compose :**](#using-docker-compose-)
@@ -260,6 +261,20 @@ A tiny helper container (`curlimages/curl`) sharing Gluetun's network namespace.
 - Web UI: `http://<host>:11011` (create the admin account on first visit)
 - Mounts: `configs/cleanuparr:/config`, `qbittorrent/downloads:/downloads` (same path as in qBittorrent, for the *Orphaned Files* cleanup that moves files no torrent claims anymore to `/downloads/orphaned`, then purges them)
 - Setup: add the download client qBittorrent with **Client Host** `http://gluetun:8080`, the arrs Sonarr `http://sonarr:8989` (API v4) and Radarr `http://radarr:7878` (API v6) with their API keys (**Settings** > **General** in each app), then enable the **Queue Cleaner**.
+
+### **Indexer janitor**
+
+[`indexer-janitor.py`](compose_files/VPN-Only/indexer-janitor.py) keeps Prowlarr's indexers healthy. Cron runs it every 6 hours (log: `~/backups/indexer-janitor.log`), and Prowlarr pushes every change to Sonarr/Radarr itself.
+
+- **Fix:** an indexer with no successful query for 7 days is disabled, so Sonarr/Radarr stop using it and warning about it. Every run re-tests the ones it disabled and re-enables them once they work again; indexers you disabled yourself are left alone.
+- **Find:** every run tests up to 5 public French/English TV/movie indexers from Prowlarr's catalog (adult ones excluded) and keeps those whose test **and** a real search pass, up to 30 active indexers. A rejected candidate is retried after 30 days.
+- Nothing you configured is ever deleted. State: `${COMMON_PATH}/configs/indexer-janitor.json`.
+
+```bash
+cd compose_files/VPN-Only/
+./indexer-janitor.py --dry-run   # show what it would change
+(crontab -l 2>/dev/null; echo "17 */6 * * * flock -n /tmp/indexer-janitor.lock $PWD/indexer-janitor.py >> $HOME/backups/indexer-janitor.log 2>&1") | crontab -   # install (once)
+```
 
 ---
 
