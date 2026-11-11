@@ -101,6 +101,7 @@ Welcome to the All-jellyfin-media-server Repository! This repository contains ev
   - [**Jellyfin**](#jellyfin-1)
     - [**Initial Setup**](#initial-setup)
     - [**Adding Users to Jellyfin**](#adding-users-to-jellyfin)
+    - [**Plugins**](#plugins)
   - [**Jellyseerr**](#jellyseerr-1)
     - [**Sign In / Configuration**](#sign-in--configuration)
     - [**Integrating with Radarr**](#integrating-with-radarr)
@@ -1257,6 +1258,33 @@ If you want other users to access your Jellyfin server, you can create additiona
 5. Repeat this process for all users you wish to add to the server.
 
 **[`^        back to top        ^`](#table-of-contents)**
+
+### **Plugins**
+
+Every plugin below has a Jellyfin 12.x build. Add the third-party repositories first (**Dashboard** > **Plugins** > **Repositories**), install from the **Catalog**, then restart Jellyfin once.
+
+| Repository | URL |
+|---|---|
+| Intro Skipper | `https://intro-skipper.org/manifest.json` |
+| Jellyfin Enhanced | `https://raw.githubusercontent.com/n00bcodr/jellyfin-plugins/main/manifest.json` |
+| IAmParadox27 | `https://www.iamparadox.dev/jellyfin/plugins/manifest.json` |
+
+| Plugin | What for |
+|---|---|
+| Intro Skipper | skip intro/credits buttons |
+| Trakt | syncs watched status with trakt.tv |
+| AniDB, AniList | anime metadata |
+| Chapter Segments Provider | turns chapter names into skippable segments |
+| Jellyfin Enhanced | Seerr search and requests inside Jellyfin, quality/language tags on posters, shortcuts |
+| Playback Reporting | who watched what, direct play vs transcode |
+| Subtitle Extract | extracts embedded subtitles before playback |
+| TMDb Box Sets | builds movie collections automatically (daily task) |
+| Home Screen Sections + File Transformation + Plugin Pages | modular home page, including Seerr trending/popular and Sonarr/Radarr upcoming rows |
+
+Settings:
+- **Jellyfin Enhanced** > Seerr: URL `http://localhost:5055` (Jellyfin and Seerr share the `tailscale` network namespace, so `localhost` reaches Seerr while `http://jellyseerr:5055` does not resolve), API key from Seerr **Settings** > **General**. Save with **Save Settings** at the bottom of the page.
+- **Home Screen Sections**: Jellyseerr Url `http://localhost:5055`, Jellyseerr External Url the address your browser opens (e.g. `http://balflix:5055`), the Seerr API key, Preferred Languages `en,fr,ja,ko` (only titles whose original language is listed are shown: the default `en` hides French, anime and Korean titles), Sonarr `http://sonarr:8989` and Radarr `http://radarr:7878` with their API keys for the upcoming rows.
+- The modular home is **off for every user by default**: each user opens the **☰** menu > **Modular Home** (Plugin Settings, at the bottom), enables it and picks the sections. That page is provided by Plugin Pages.
 
 ---
 

@@ -101,6 +101,7 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
   - [**Jellyfin**](#jellyfin-1)
     - [**Configuration Initiale**](#configuration-initiale)
     - [**Ajouter des utilisateurs à Jellyfin**](#ajouter-des-utilisateurs-à-jellyfin)
+    - [**Extensions**](#extensions)
   - [**Jellyseerr**](#jellyseerr-1)
     - [**Connexion / Configuration**](#connexion--configuration)
     - [**Intégration avec Radarr**](#intégration-avec-radarr)
@@ -1261,6 +1262,33 @@ Si vous souhaitez que d'autres utilisateurs aient accès à votre serveur Jellyf
 5. Répétez ce processus pour tous les utilisateurs que vous souhaitez ajouter au serveur.
 
 **[`^        retour au sommaire        ^`](#table-des-matières)**
+
+### **Extensions**
+
+Toutes les extensions ci-dessous ont une version pour Jellyfin 12.x. Ajoutez d'abord les dépôts tiers (**Tableau de bord** > **Extensions** > **Dépôts**), installez depuis le **Catalogue**, puis redémarrez Jellyfin une fois.
+
+| Dépôt | URL |
+|---|---|
+| Intro Skipper | `https://intro-skipper.org/manifest.json` |
+| Jellyfin Enhanced | `https://raw.githubusercontent.com/n00bcodr/jellyfin-plugins/main/manifest.json` |
+| IAmParadox27 | `https://www.iamparadox.dev/jellyfin/plugins/manifest.json` |
+
+| Extension | À quoi elle sert |
+|---|---|
+| Intro Skipper | boutons pour passer génériques de début et de fin |
+| Trakt | synchronise ce qui a été vu avec trakt.tv |
+| AniDB, AniList | métadonnées des anime |
+| Chapter Segments Provider | transforme les noms de chapitres en segments que l'on peut passer |
+| Jellyfin Enhanced | recherche et demandes Seerr dans Jellyfin, badges qualité/langue sur les affiches, raccourcis |
+| Playback Reporting | qui a regardé quoi, lecture directe ou transcodage |
+| Subtitle Extract | extrait les sous-titres intégrés avant la lecture |
+| TMDb Box Sets | crée automatiquement les collections de films (tâche quotidienne) |
+| Home Screen Sections + File Transformation + Plugin Pages | page d'accueil modulaire, avec les tendances/populaires de Seerr et les sorties à venir de Sonarr/Radarr |
+
+Réglages :
+- **Jellyfin Enhanced** > Seerr : URL `http://localhost:5055` (Jellyfin et Seerr partagent l'espace réseau de `tailscale` : `localhost` atteint Seerr alors que `http://jellyseerr:5055` ne se résout pas), clé API dans Seerr **Settings** > **General**. Enregistrez avec **Save Settings** en bas de la page.
+- **Home Screen Sections** : Jellyseerr Url `http://localhost:5055`, Jellyseerr External Url l'adresse qu'ouvre votre navigateur (ex. `http://balflix:5055`), la clé API Seerr, Preferred Languages `en,fr,ja,ko` (seuls les titres dont la langue originale est listée s'affichent : le `en` par défaut masque les titres français, les anime et les séries coréennes), Sonarr `http://sonarr:8989` et Radarr `http://radarr:7878` avec leurs clés API pour les rangées « à venir ».
+- L'accueil modulaire est **désactivé par défaut pour chaque utilisateur** : chacun ouvre le menu **☰** > **Modular Home** (Plugin Settings, tout en bas), l'active et choisit ses sections. Cette page est fournie par Plugin Pages.
 
 ---
 
