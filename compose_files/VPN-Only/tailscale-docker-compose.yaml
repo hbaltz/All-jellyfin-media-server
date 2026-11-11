@@ -62,7 +62,7 @@ services:
   # ── GLUETUN ───────────────────────────────────────────────
   gluetun:
     container_name: GlueTun-VPN
-    image: qmcgaw/gluetun
+    image: qmcgaw/gluetun:v3
     cap_add:
       - NET_ADMIN
     ports:
