@@ -11,11 +11,10 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
 > **Ceci est un fork personnalisé.** En plus de la stack d'origine, il ajoute :
 > - **Bazarr** – téléchargement automatique de sous-titres pour Radarr/Sonarr
 > - **Translatarr** – traduction automatique des sous-titres
-> - **Tailscale** – expose Jellyfin / Jellyseerr (et les interfaces livres audio) sur un tailnet privé au lieu de publier les ports sur le LAN
+> - **Tailscale** – expose Jellyfin / Jellyseerr sur un tailnet privé au lieu de publier les ports sur le LAN
 > - **qbit-port-sync** – injecte automatiquement le port forwardé par Gluetun dans qBittorrent
-> - **Stack livres audio** – Audiobookshelf (lecteur/bibliothèque), Shelfarr (demandes + import, le Jellyseerr des livres) et Chaptarr (surveillance optionnelle, façon Radarr), en réutilisant le Prowlarr + qBittorrent existants
 >
-> Voir [**Services ajoutés**](#services-ajoutés-fork) et [**Livres audio**](#livres-audio) plus bas, ainsi que les fichiers compose dans [`compose_files/VPN-Only/`](compose_files/VPN-Only/) (`tailscale-docker-compose.yaml`, `tailscale-docker-compose-audiobooks.yaml`).
+> Voir [**Services ajoutés**](#services-ajoutés-fork) plus bas, ainsi que le fichier compose dans [`compose_files/VPN-Only/`](compose_files/VPN-Only/) (`tailscale-docker-compose.yaml`).
 
 ![](https://img.shields.io/github/stars/Morzomb/All-jellyfin-media-server.svg)
 ![](https://img.shields.io/github/forks/Morzomb/All-jellyfin-media-server.svg)
@@ -48,10 +47,6 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
     - [**Translatarr**](#translatarr)
     - [**Tailscale**](#tailscale)
     - [**qbit-port-sync**](#qbit-port-sync)
-  - [**Livres audio**](#livres-audio)
-    - [**Audiobookshelf**](#audiobookshelf)
-    - [**Shelfarr**](#shelfarr)
-    - [**Chaptarr**](#chaptarr)
 - [**Prérequis**](#prérequis)
   - [**Docker**](#docker)
     - [**Utiliser Docker Compose :**](#utiliser-docker-compose-)
@@ -82,7 +77,7 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
   - [**2. Installation avec uniquement NVIDIA**](#2-installation-avec-uniquement-nvidia)
   - [**3. Installation avec NVIDIA et VPN**](#3-installation-avec-nvidia-et-vpn)
   - [**4. Installation avec VPN (sans NVIDIA)**](#4-installation-avec-vpn-sans-nvidia)
-  - [**5. Installation avec Tailscale (+ Livres audio)**](#5-installation-avec-tailscale--livres-audio)
+  - [**5. Installation avec Tailscale**](#5-installation-avec-tailscale)
 - [**Accéder aux Applications**](#accéder-aux-applications)
 - [**Guide de Configuration pour les Interfaces Web uniquement**](#guide-de-configuration-pour-les-interfaces-web-uniquement)
   - [**qBittorrent**](#qbittorrent-1)
@@ -115,7 +110,6 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
     - [**Configurer les Langues**](#configurer-les-langues)
     - [**Configurer les Sous-titres**](#configurer-les-sous-titres)
   - [**Tailscale**](#tailscale-1)
-  - [**Livres audio (Audiobookshelf / Shelfarr / Chaptarr)**](#livres-audio-audiobookshelf--shelfarr--chaptarr)
 - [**Mise à jour des applications**](#mise-à-jour-des-applications)
 - [**Avertissement**](#avertissement)
 
@@ -219,7 +213,7 @@ Isyrr utilise Docker et Docker Compose pour déployer les services. Les fichiers
 
 ## **Services ajoutés (fork)**
 
-Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans les fichiers `compose_files/VPN-Only/tailscale-docker-compose.yaml` et `tailscale-docker-compose-audiobooks.yaml`.
+Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans le fichier `compose_files/VPN-Only/tailscale-docker-compose.yaml`.
 
 ### **Bazarr**
 
@@ -240,11 +234,11 @@ Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans 
 
 ### **Tailscale**
 
-[Tailscale](https://tailscale.com/) crée un maillage WireGuard privé et chiffré (tailnet) entre vos appareils. Dans ce fork, le conteneur `tailscale` sert de **fournisseur réseau** : `jellyfin`, `jellyseerr` et les interfaces livres audio tournent avec `network_mode: service:tailscale` et sont donc accessibles via `http://homeserver:<port>` sur le tailnet, sans publier de ports sur le LAN.
+[Tailscale](https://tailscale.com/) crée un maillage WireGuard privé et chiffré (tailnet) entre vos appareils. Dans ce fork, le conteneur `tailscale` sert de **fournisseur réseau** : `jellyfin` et `jellyseerr` tournent avec `network_mode: service:tailscale` et sont donc accessibles via `http://homeserver:<port>` sur le tailnet, sans publier de ports sur le LAN.
 
 - Image : `tailscale/tailscale:latest`
 - Nécessite une clé d'authentification dans `TS_AUTHKEY` (définie dans le fichier compose), `/dev/net/tun`, et les capacités `NET_ADMIN` + `SYS_MODULE`.
-- Tout port dont a besoin un conteneur co-réseauté **doit figurer dans le bloc `ports:` du service `tailscale`** (c'est pourquoi `13378` et `5056` y sont ajoutés pour la stack livres audio).
+- Tout port dont a besoin un conteneur co-réseauté **doit figurer dans le bloc `ports:` du service `tailscale`**.
 - État : `configs/tailscale:/var/lib/tailscale`
 
 > [!IMPORTANT]
@@ -253,111 +247,6 @@ Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans 
 ### **qbit-port-sync**
 
 Un petit conteneur utilitaire (`curlimages/curl`) partageant l'espace réseau de Gluetun. Il lit le port que Gluetun fait suivre depuis le fournisseur VPN (`/tmp/gluetun/forwarded_port`) et appelle l'API de qBittorrent pour le définir comme port d'écoute, afin que la connectivité entrante continue de fonctionner quand ce port change. Il s'exécute une seule fois (`restart: "no"`) et s'appuie sur `scripts/qbit-port-sync.sh`.
-
----
-
-## **Livres audio**
-
-Un pipeline livres audio optionnel qui reprend la logique films/séries et **réutilise le Prowlarr et le qBittorrent existants** :
-
-| Service | Rôle | Équivalent | Réseau | Accès |
-|---|---|---|---|---|
-| `audiobookshelf` | lecteur / bibliothèque | Jellyfin | `service:tailscale` | `http://homeserver:13378` |
-| `shelfarr` | demandes **+ import** | Jellyseerr | `service:tailscale` | `http://homeserver:5056` |
-| `chaptarr` | gestionnaire d'acquisition | Radarr | bridge | `http://<hôte>:8789` |
-
-#### **Ports**
-
-| Service | Port hôte | Port conteneur | Déclaré sur | Accessible via |
-|---|---|---|---|---|
-| `audiobookshelf` | `13378` | `13378` (`PORT=13378`) | le service **`tailscale`** | `http://homeserver:13378` |
-| `shelfarr` | `5056` | `5056` (`HTTP_PORT=5056`) | le service **`tailscale`** | `http://homeserver:5056` |
-| `chaptarr` | `8789` | `8789` | le service `chaptarr` lui-même | `http://<hôte>:8789` |
-
-#### **Noms d'hôte des conteneurs — à lire avant de remplir le moindre écran de configuration**
-
-> [!CAUTION]
-> **`qbittorrent` n'est pas un nom d'hôte valide dans cette stack.** qBittorrent tourne avec `network_mode: service:gluetun` : il n'a donc aucune identité réseau propre et le DNS de Docker n'a aucun enregistrement pour lui. Pire, chez de nombreux FAI le nom fuite vers le DNS public et résout silencieusement vers un serveur public sans rapport (chez Numericable/SFR, `qbittorrent` résout vers `qbittorrent.numericable.fr`). Le test de connexion échoue, ou reste bloqué, pour des raisons qui ne ressemblent en rien à un problème DNS.
->
-> **Utilisez `gluetun` à la place.** Idem pour Jellyfin, Jellyseerr, Audiobookshelf et Shelfarr, qui vivent dans l'espace réseau `tailscale` et répondent sur `tailscale`.
-
-La règle : un conteneur déclaré avec `network_mode: service:X` s'adresse via **`X`**, pas via son propre nom.
-
-| Service | `network_mode` | Adresse à utiliser depuis les autres conteneurs | Vérifié |
-|---|---|---|---|
-| qBittorrent | `service:gluetun` | **`gluetun:8080`** | HTTP 200 |
-| Audiobookshelf | `service:tailscale` | **`tailscale:13378`** | HTTP 200 |
-| Shelfarr | `service:tailscale` | **`tailscale:5056`** | HTTP 302 |
-| Jellyfin | `service:tailscale` | **`tailscale:8096`** | |
-| Jellyseerr | `service:tailscale` | **`tailscale:5055`** | |
-| Chaptarr | *(bridge)* | `chaptarr:8789` | HTTP 200 |
-| Prowlarr | *(bridge)* | `prowlarr:9696` | |
-| Sonarr / Radarr / Bazarr | *(bridge)* | `sonarr:8989` / `radarr:7878` / `bazarr:6767` | |
-| FlareSolverr | *(bridge)* | `flaresolverr:8191` | |
-
-Donc, les adresses à saisir dans chaque écran de configuration :
-
-| Depuis | Vers | Adresse à saisir |
-|---|---|---|
-| Chaptarr | qBittorrent | Host `gluetun`, Port `8080` |
-| Shelfarr | qBittorrent | `http://gluetun:8080` |
-| Shelfarr | Prowlarr | `http://prowlarr:9696` |
-| Shelfarr | Audiobookshelf | `http://localhost:13378` *(même espace réseau — `localhost` fonctionne)* |
-| Prowlarr | Chaptarr | `http://chaptarr:8789` |
-| Radarr / Sonarr / Bazarr | qBittorrent | Host `gluetun`, Port `8080` |
-
-> [!NOTE]
-> Ceci corrige les instructions d'origine plus bas, qui indiquent de saisir `qbittorrent` comme Host pour Radarr et Sonarr. Ce conseil est antérieur aux variantes VPN ; avec `network_mode: service:gluetun` il ne peut pas fonctionner. Utilisez `gluetun`.
-
-> [!WARNING]
-> `audiobookshelf` et `shelfarr` utilisent `network_mode: service:tailscale` : **leurs ports doivent être déclarés dans le bloc `ports:` du service `tailscale`**, pas sur leur propre service. Si vous changez `13378` ou `5056`, changez-le aux *deux* endroits (la liste `ports:` de `tailscale` et la variable `PORT` de l'application).
->
-> Les conteneurs partageant un espace réseau se joignent entre eux via `localhost`. Tout le reste se joint via le nom du propriétaire de l'espace réseau, selon le tableau ci-dessus.
-
-Convention de dossiers sous `${COMMON_PATH}` (`/VOTRE_CHEMIN/Isyrr`) :
-
-```
-configs/audiobookshelf      configs/shelfarr      configs/chaptarr
-chaptarr/audiobooks         chaptarr/ebooks              audiobookshelf/metadata
-```
-
-À créer une fois avant le premier `up` :
-
-```bash
-mkdir -p ${COMMON_PATH}/configs/{audiobookshelf,shelfarr,chaptarr} \
-         ${COMMON_PATH}/chaptarr/{audiobooks,ebooks} \
-         ${COMMON_PATH}/audiobookshelf/metadata
-```
-
-### **Audiobookshelf**
-
-[Audiobookshelf](https://www.audiobookshelf.org/) est un serveur auto-hébergé de livres audio et de podcasts : multi-utilisateurs, synchronisation de la progression, applications iOS/Android natives, édition des chapitres et fusion en m4b.
-
-- Image : `ghcr.io/advplyr/audiobookshelf:latest`
-- Tourne avec `network_mode: service:tailscale`, `PORT=13378`
-- Montages : `configs/audiobookshelf:/config`, `audiobookshelf/metadata:/metadata`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/books`
-
-### **Shelfarr**
-
-[Shelfarr](https://shelfarr.org/) est l'équivalent de Jellyseerr pour les livres : on parcourt, on demande, et le livre arrive dans la bibliothèque. Surtout, il prend en charge **toute** la chaîne — il cherche via Prowlarr, envoie la release à qBittorrent, puis renomme, organise et livre les fichiers finis dans la bibliothèque Audiobookshelf.
-
-C'est cette dernière étape qui le fait préférer ici à une interface de demandes seule : les outils qui s'arrêtent à « torrent téléchargé » vous laissent déplacer et renommer les fichiers à la main, faute d'un *arr derrière eux pour faire l'import.
-
-- Image : **`ghcr.io/pedro-revez-silva/shelfarr:latest`** (épinglez la version avec `SHELFARR_VERSION` dans `.env`)
-- Tourne avec `network_mode: service:tailscale`, `HTTP_PORT=5056` — volontairement voisin du `5055` de Jellyseerr
-- Montages : `configs/shelfarr:/rails/storage`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/ebooks`, `qbittorrent/downloads:/downloads`
-- Une clé secrète est générée au premier démarrage et enregistrée dans `/rails/storage` — aucune configuration manuelle
-- Gère aussi des sources directes (Anna's Archive, Z-Library, LibriVox) et un compagnon Libation optionnel pour les sauvegardes Audible, laissé en commentaire dans le fichier compose
-- Seule exigence stricte : un moyen de trouver des livres, et un endroit où les mettre
-
-### **Chaptarr**
-
-[Chaptarr](https://github.com/Chaptarr/Chaptarr) est un fork maintenu de Readarr (désormais archivé), gérant ebooks **et** livres audio dans une seule instance, avec organisation tenant compte du narrateur, éditions multiples, support m4b et conversion MP3→M4B.
-
-- Image : **`chaptarr/chaptarr:latest`** (Docker Hub). Projet en **bêta** — pensez à épingler un tag précis (ex. `chaptarr/chaptarr:0.9.333`) une fois une version choisie.
-- Interface web : `http://<hôte>:8789`
-- Montages : `configs/chaptarr:/config`, `chaptarr/audiobooks:/audiobooks`, `chaptarr/ebooks:/ebooks`, `qbittorrent/downloads:/downloads`
-- Alternative : un bloc `lazylibrarian` commenté (`lscr.io/linuxserver/lazylibrarian`) est inclus dans le fichier compose livres audio.
 
 ---
 
@@ -1036,26 +925,22 @@ docker compose -f docker-compose-<YOUR_VPN>-vpn.yaml up -d
 ```
 [Aller au fichier ici](compose_files/VPN-Only/)
 
-## **5. Installation avec Tailscale (+ Livres audio)**
+## **5. Installation avec Tailscale**
 
 > [!WARNING]
-> Si vous utilisez cette méthode, remplissez le fichier `.env` situé dans `compose_files/VPN-Only/`. Jellyfin, Jellyseerr et les interfaces livres audio sont servis via le **tailnet** (`http://homeserver:<port>`), pas sur `localhost`. Renseignez une `TS_AUTHKEY` valide (voir la note [Tailscale](#tailscale) sur le fait de la garder hors d'un dépôt public).
+> Si vous utilisez cette méthode, remplissez le fichier `.env` situé dans `compose_files/VPN-Only/`. Jellyfin et Jellyseerr sont servis via le **tailnet** (`http://homeserver:<port>`), pas sur `localhost`. Renseignez une `TS_AUTHKEY` valide (voir la note [Tailscale](#tailscale) sur le fait de la garder hors d'un dépôt public).
 
-Ce fork ajoute deux fichiers compose basés sur Tailscale dans `compose_files/VPN-Only/` :
+Ce fork ajoute un fichier compose basé sur Tailscale dans `compose_files/VPN-Only/` :
 
 | Fichier | Contenu |
 |---|---|
 | `tailscale-docker-compose.yaml` | Tailscale + Jellyfin + Jellyseerr + Gluetun + qBittorrent + qbit-port-sync + FlareSolverr + Prowlarr + Sonarr + Radarr + Bazarr + Translatarr |
-| `tailscale-docker-compose-audiobooks.yaml` | Tout ce qui précède **plus** Audiobookshelf + Shelfarr + Chaptarr |
 
-Créez d'abord les dossiers livres audio (voir [Livres audio](#livres-audio)), puis :
+Puis :
 
 ```bash
 cd compose_files/VPN-Only/
-# stack sans livres audio
 docker compose -f tailscale-docker-compose.yaml up -d
-# ou la stack avec livres audio
-docker compose -f tailscale-docker-compose-audiobooks.yaml up -d
 ```
 [Aller aux fichiers ici](compose_files/VPN-Only/)
 
@@ -1081,13 +966,10 @@ Ajoutés par ce fork :
 * Bazarr : http://localhost:6767
 * Translatarr : http://localhost:6868
 
-Avec un fichier compose **Tailscale**, Jellyfin / Jellyseerr / Audiobookshelf / Shelfarr sont accessibles via le tailnet et non `localhost` :
+Avec un fichier compose **Tailscale**, Jellyfin / Jellyseerr sont accessibles via le tailnet et non `localhost` :
 
 * Jellyfin : http://homeserver:8096
 * Jellyseerr : http://homeserver:5055
-* Audiobookshelf : http://homeserver:13378
-* Shelfarr : http://homeserver:5056
-* Chaptarr : http://localhost:8789 *(LAN uniquement, pas sur le tailnet)*
 
 Gluetun (Nord VPN) sera automatiquement configuré pour être utilisé avec les applications.
 
@@ -1522,294 +1404,6 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
 
 > [!IMPORTANT]
 > Tout conteneur partageant l'espace réseau tailnet (`network_mode: service:tailscale`) ne peut publier ses ports que via la liste `ports:` du service **`tailscale`**. Ajoutez le port là, pas sur le conteneur applicatif.
-
----
-
-## **Livres audio (Audiobookshelf / Shelfarr / Chaptarr)**
-
-**0. Créez les dossiers** (voir [Livres audio](#livres-audio)) puis démarrez `tailscale-docker-compose-audiobooks.yaml`.
-
-**1. qBittorrent** – créez d'abord la catégorie de téléchargement
-
-   Sans cela, Chaptarr signalera une erreur « directory does not exist » (même comportement que Radarr).
-
-   - Sur l'hôte : `mkdir -p ${COMMON_PATH}/qbittorrent/downloads/chaptarr`
-   - Interface web (`http://localhost:8080`) > dépliez **CATEGORIES** > clic droit sur **All** > **Add category...**
-     - **Category** : `chaptarr`
-     - **Save path** : `/downloads/chaptarr`
-   - Cliquez sur **Add**.
-
-**2. Chaptarr** – `http://<hôte>:8789`
-
-   Créez le compte administrateur au premier lancement, puis :
-
-   | Où | Champ | Valeur |
-   |---|---|---|
-   | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/audiobooks` |
-   | **Settings** > **Media Management** > **Add Root Folder** | Chemin | `/ebooks` *(seulement si vous gardez des ebooks)* |
-   | **Settings** > **Media Management** > *Show Advanced* > **Importing** | Use Hardlinks instead of Copy | **activé** |
-   | **Settings** > **Download Clients** > **+** > **qBittorrent** | Host | **`gluetun`** *(pas `qbittorrent` — voir [Noms d'hôte des conteneurs](#noms-dhôte-des-conteneurs--à-lire-avant-de-remplir-le-moindre-écran-de-configuration))* |
-   | | Port | `8080` |
-   | | Use SSL | désactivé |
-   | | Username | `admin` |
-   | | Password | votre mot de passe qBittorrent |
-   | | Category | `chaptarr` |
-
-   Cliquez sur **Test** (une coche verte doit apparaître), puis **Save**. N'ajoutez **pas** d'indexeurs ici — Prowlarr les pousse à l'étape suivante.
-
-   <details>
-   <summary>Retrouver votre mot de passe qBittorrent</summary>
-
-   Par défaut `admin` / `adminadmin`. Les images récentes génèrent plutôt un mot de passe temporaire au premier démarrage — lisez-le avec :
-
-   ```bash
-   docker logs qbittorrent 2>&1 | grep -i "temporary password"
-   ```
-
-   Définissez-en un permanent dans qBittorrent **Options** > **Web UI** > *Authentification*.
-   </details>
-
-   Notez la clé API dans **Settings** > **General** > **API Key**, elle sert plus bas.
-
-**3. Prowlarr** – `http://localhost:9696` – ajoutez les indexeurs livres et synchronisez-les vers Chaptarr
-
-   - **Indexers** > **Add Indexer** : ajoutez des trackers proposant livres audio / ebooks (catégories *Audio > Audiobook* et *Books*). Testez et enregistrez chacun.
-   - **Settings** > **Apps** > **+** et choisissez **Readarr**.
-
-     > [!IMPORTANT]
-     > Il n'existe **aucun type d'application « Chaptarr »** dans Prowlarr (vérifié en 2.5.2). Chaptarr parle l'API de Readarr : vous l'enregistrez donc *en tant que* Readarr. Nommez l'entrée `Chaptarr` pour les distinguer.
-
-     | Champ | Valeur |
-     |---|---|
-     | Name | `Chaptarr` |
-     | Sync Level | `Full Sync` |
-     | Prowlarr Server | `http://prowlarr:9696` |
-     | Readarr Server | `http://chaptarr:8789` |
-     | API Key | la clé Chaptarr de l'étape 2 |
-     | Sync Categories | `3030` (Audiobook), `7000`/`7020` (Books), `8000`/`8010` (Other/Books) |
-
-   - **Test**, puis **Save**. Prowlarr pousse immédiatement tous les indexeurs dont les catégories recoupent celles ci-dessus ; ils apparaissent dans Chaptarr sous **Settings** > **Indexers**, avec la synchronisation RSS déjà activée.
-   - Pour forcer manuellement : **Settings** > **Apps** > *Sync App Indexers*.
-
-   > [!NOTE]
-   > Seuls les indexeurs annonçant réellement des catégories livres sont synchronisés : attendez-vous donc à **moins** d'indexeurs dans Chaptarr que dans Prowlarr — c'est le comportement normal, pas un échec. Les trackers uniquement anime/séries sont ignorés.
-
-**4. Audiobookshelf** – `http://homeserver:13378`
-
-   - Créez le compte administrateur au premier lancement (compte *serveur*, distinct de Jellyfin).
-   - **Settings** > **Libraries** > **Add Library** :
-
-     | Champ | Valeur |
-     |---|---|
-     | Nom | `Audiobooks` |
-     | Type de média | `Books` |
-     | Dossier | `/audiobooks` |
-
-   - Ajoutez une seconde bibliothèque pointant sur `/books` si vous gardez des ebooks.
-   - **Settings** > **Users** pour ajouter des comptes aux autres auditeurs (chacun a sa propre synchronisation de progression).
-   - Applications mobiles (iOS/Android) : ajoutez le serveur `http://homeserver:13378` — l'appareil doit être sur votre tailnet.
-
-**5. Shelfarr** – `http://homeserver:5056`
-
-   Créez le compte administrateur au premier lancement, puis parcourez **Settings** :
-
-   **a. Indexeur** — comment il trouve les livres
-
-   | Paramètre | Valeur |
-   |---|---|
-   | Type | Prowlarr |
-   | Base URL | `http://prowlarr:9696` |
-   | Clé API | depuis Prowlarr **Settings** > **General** |
-   | Catégories | Audiobook `3030`, Books `7000`/`7020`, Other `8000`/`8010` |
-
-   **b. Client de téléchargement** — comment il les récupère
-
-   | Paramètre | Valeur |
-   |---|---|
-   | Type | qBittorrent |
-   | Host / URL | **`gluetun`** port `8080` — *pas* `qbittorrent`, voir [Noms d'hôte des conteneurs](#noms-dhôte-des-conteneurs--à-lire-avant-de-remplir-le-moindre-écran-de-configuration) |
-   | Utilisateur / mot de passe | comme dans l'interface qBittorrent |
-   | Catégorie | `shelfarr` (créez-la dans qBittorrent avec le chemin `/downloads/shelfarr`) |
-
-   **c. Chemins de bibliothèque** — où vont les livres terminés
-
-   | Paramètre | Valeur |
-   |---|---|
-   | Dossier livres audio | `/audiobooks` |
-   | Dossier ebooks | `/ebooks` |
-   | Dossier téléchargements | `/downloads` |
-
-   **d. Audiobookshelf** *(optionnel mais recommandé)* — enrichissement des métadonnées et scans automatiques
-
-   | Paramètre | Valeur |
-   |---|---|
-   | URL | `http://localhost:13378` — même espace réseau, `localhost` est donc correct ici |
-   | Jeton API | Audiobookshelf **Settings** > **Users** > votre utilisateur > *API Token* |
-
-   **e. Fournisseur de métadonnées — obligatoire, et le premier piège**
-
-   Shelfarr a besoin d'une source de métadonnées fonctionnelle pour pouvoir chercher. Son ordre de priorité est `hardcover, openlibrary, google_books, comic_vine`, et par défaut **aucun ne fonctionne de façon fiable** :
-
-   | Fournisseur | État par défaut | Correctif |
-   |---|---|---|
-   | Hardcover | Activé mais **sans jeton** → échoue | Inscrivez-vous sur [hardcover.app](https://hardcover.app/), puis **Account Settings** > **API** et collez le jeton. Gratuit, spécialisé livres — **faites celui-ci** |
-   | OpenLibrary | Fonctionne, mais une seule mauvaise réponse le marque `degraded` et il n'est plus interrogé ; cet état **survit à un redémarrage** du conteneur | Se rétablit seul après le délai, ou réactivez-le dans les Settings |
-   | Google Books | Le quota anonyme est partagé mondialement et est généralement **déjà épuisé** (`HTTP 429`) | Ajoutez une clé API gratuite depuis la [console Google Cloud](https://console.cloud.google.com/) (activez l'API Books) |
-
-   > [!CAUTION]
-   > Si vous voyez **« Unable to connect to metadata service. Please try again later. »**, c'est la raison — ce n'est pas un problème réseau. Vérifiez avec `docker logs shelfarr | grep MetadataService` ; vous verrez `Skipping openlibrary: degraded` et `Skipping google_books: rate_limited`. Renseignez un **jeton Hardcover** et cela se règle.
-
-   **f. Accès** — choisissez le mode de connexion et, si vous le souhaitez, OIDC/2FA avant d'ouvrir à d'autres.
-
-> [!NOTE]
-> Shelfarr et Chaptarr sont des projets jeunes et leurs écrans de configuration bougent d'une version à l'autre — si un nom de champ ci-dessus ne correspond pas, consultez la documentation du projet. Épinglez des tags d'image explicites (`SHELFARR_VERSION`) et lisez les notes de version avant toute mise à jour. Chaptarr est explicitement en **bêta**.
-
-> [!TIP]
-> **Avez-vous besoin de Shelfarr *et* de Chaptarr ?** Probablement pas.
->
-> - **Shelfarr seul** — l'expérience Jellyseerr. On parcourt, on demande, c'est fini : il cherche, télécharge, organise et livre dans Audiobookshelf. Le plus simple, et ce que veulent la plupart des gens.
-> - **Chaptarr seul** — l'expérience Radarr. Pas d'interface de demandes, mais il *surveille* les auteurs et récupère automatiquement les sorties futures et les montées en qualité.
-> - **Les deux** — seulement si vous voulez le flux de demandes de Shelfarr *et* la surveillance continue de Chaptarr. Donnez à chacun sa propre catégorie qBittorrent (`shelfarr` / `chaptarr`) pour qu'ils ne se disputent jamais le même téléchargement.
-
-### **Tutoriel : votre premier livre audio**
-
-Tout ce qui précède, c'est du câblage. Voici la chaîne complète, parcourue une fois de bout en bout.
-
-#### **Étape 0 — vérifier la plomberie (2 min)**
-
-Lancez ces quatre vérifications depuis l'hôte. Les quatre doivent passer avant de chercher.
-
-```bash
-# 1. qBittorrent passe bien derrière le VPN — ces deux IP DOIVENT différer
-docker exec GlueTun-VPN wget -qO- https://api.ipify.org/   # IP de sortie VPN
-curl -s https://api.ipify.org/                             # votre vraie IP
-
-# 2. Un port est bien forwardé (un nombre, pas vide)
-cat ${COMMON_PATH}/gluetun/forwarded_port
-
-# 3. Le dossier de téléchargement chaptarr existe dans le conteneur
-docker exec qbittorrent ls -ld /downloads/chaptarr
-
-# 4. Chaptarr a des indexeurs, et aucun avertissement de santé
-KEY=$(grep -oP '(?<=<ApiKey>)[^<]+' ${COMMON_PATH}/configs/chaptarr/config.xml | head -1)
-curl -s -H "X-Api-Key: $KEY" http://localhost:8789/api/v1/indexer | grep -o '"name"' | wc -l
-curl -s -H "X-Api-Key: $KEY" http://localhost:8789/api/v1/health
-```
-
-La vérification 4 doit afficher un nombre supérieur à `0` puis `[]` (vide = aucun avertissement). Si elle affiche `0`, Chaptarr n'a aucun indexeur — revenez à l'étape 3 du guide de configuration.
-
-> [!IMPORTANT]
-> La catégorie `chaptarr` dans qBittorrent doit avoir un **chemin de sauvegarde**. Une catégorie créée avec un chemin vide envoie silencieusement les téléchargements dans le dossier par défaut, et Chaptarr ne les importe jamais. Vérifiez dans **CATEGORIES** > clic droit sur `chaptarr` > **Éditer la catégorie** : *Save path* doit indiquer `/downloads/chaptarr`.
-
-#### **Étape 1 — ajouter le livre dans Chaptarr**
-
-1. Ouvrez `http://<hôte>:8789` > **Library** > **Add New**.
-2. Saisissez un auteur ou un titre (ex. `Brandon Sanderson`) et choisissez le résultat voulu.
-3. Remplissez la boîte de dialogue :
-
-   | Champ | Valeur |
-   |---|---|
-   | Root Folder | `/audiobooks` |
-   | Monitor | `All Books` — ou `None` si vous ne voulez que ce titre |
-   | Quality Profile | `Audiobook` |
-   | Metadata Profile | `Audiobook Default` |
-   | Search for missing books | ✅ coché |
-
-4. Cliquez sur **Add**. Chaptarr interroge immédiatement tous les indexeurs synchronisés.
-
-> Choisir le profil de qualité `Audiobook` (et non `E-Book`) est ce qui l'empêche de récupérer un EPUB.
-
-#### **Étape 2 — regarder la récupération**
-
-- **Chaptarr** > **Activity** > **Queue** — la release apparaît en quelques secondes.
-- **qBittorrent** (`http://localhost:8080`) — le torrent est là sous la catégorie `chaptarr`, enregistré dans `/downloads/chaptarr`.
-
-Si la file reste vide, lancez plutôt une recherche manuelle : ouvrez le livre > cliquez sur la **loupe** > examinez la liste des releases > cliquez sur la **flèche de téléchargement** d'une release bien seedée. Cela vous indique aussi *pourquoi* la récupération automatique a été rejetée — survolez la release pour voir la raison (mauvais format, profil de qualité incompatible, etc.).
-
-#### **Étape 3 — import**
-
-Une fois le torrent terminé, Chaptarr le hardlinke dans `/audiobooks/<Auteur>/<Titre>/` et continue de seeder depuis `/downloads/chaptarr`. Vérifiez :
-
-```bash
-ls -R ${COMMON_PATH}/chaptarr/audiobooks | head -20
-```
-
-Si le fichier a été téléchargé mais jamais déplacé, c'est presque toujours l'incohérence de chemin de catégorie de l'étape 0.
-
-#### **Étape 4 — écouter**
-
-1. Ouvrez Audiobookshelf : `http://homeserver:13378`.
-2. **Settings** > **Libraries** > votre bibliothèque Audiobooks > **Scan** (un scan planifié existe aussi).
-3. Le livre apparaît avec sa jaquette et ses chapitres. Ouvrez-le dans le navigateur, ou dans l'application iOS/Android pointée sur `http://homeserver:13378` — la progression se synchronise entre les deux.
-
-> [!TIP]
-> **Vous préférez l'expérience Jellyseerr ?** Sautez complètement Chaptarr et utilisez **Shelfarr** (`http://homeserver:5056`) : cherchez, cliquez sur **Request**, et il interroge Prowlarr, télécharge via qBittorrent, organise les fichiers et les dépose seul dans votre bibliothèque Audiobookshelf. Les étapes 1 à 3 ci-dessus se réduisent à un clic.
-
----
-
-### **Lancer un téléchargement torrent**
-
-Documentation de référence pour les téléchargements suivants.
-
-#### **Liste de vérification préalable**
-
-Parcourez-la avant votre première recherche — un oubli ici est la cause habituelle des « aucun résultat » ou des « bloqué à 0 % » :
-
-| # | Vérification | Comment vérifier |
-|---|---|---|
-| 1 | Le VPN est actif et qBittorrent passe derrière | `docker exec qbittorrent curl -s https://api.ipify.org/` renvoie l'IP du **VPN**, pas celle de votre FAI |
-| 2 | Le port forwardé est appliqué | qBittorrent **Options** > **Connexion** > *Port d'écoute* correspond à `${COMMON_PATH}/gluetun/forwarded_port` (ce que `qbit-port-sync` automatise) |
-| 3 | qBittorrent est en mode automatique | **Options** > **Téléchargements** > *Mode de gestion des torrents par défaut* : `Automatique` — sinon les chemins de sauvegarde par catégorie sont ignorés |
-| 4 | La catégorie `chaptarr` existe | qBittorrent > **CATEGORIES** > `chaptarr` → `/downloads/chaptarr` |
-| 5 | Les indexeurs sont synchronisés | Chaptarr > **Settings** > **Indexers** liste les trackers poussés par Prowlarr |
-| 6 | Au moins un indexeur couvre les livres | Prowlarr > **Indexers**, les catégories de l'indexeur incluent *Audio > Audiobook* (`3030`) et/ou *Books* (`7000`, `8000`) |
-
-#### **A. Télécharger via Chaptarr (bibliothèque surveillée)**
-
-1. **Library** > **Add New** et cherchez un auteur ou un titre.
-2. Choisissez le résultat, puis réglez :
-   - **Root Folder** : `/audiobooks`
-   - **Monitor** : `All Books` (ou `Future Books` si vous ne voulez que les nouveautés)
-   - **Quality Profile** : un profil incluant les formats voulus (M4B, MP3)
-   - **Search for missing books** : coché, pour démarrer immédiatement
-3. Cliquez sur **Add**. Chaptarr interroge tous les indexeurs synchronisés et récupère la meilleure correspondance.
-4. Suivez la progression dans **Activity** > **Queue**. Le torrent apparaît dans qBittorrent sous la catégorie `chaptarr`.
-5. Pour chercher manuellement : ouvrez le livre > **Manual Search** (la loupe), examinez les releases et cliquez sur la flèche de téléchargement de celle que vous voulez.
-
-Une fois le torrent terminé, Chaptarr l'importe dans `/audiobooks` (en hardlink, le seed continue donc), et Audiobookshelf le détecte au scan suivant — ou immédiatement via **Settings** > **Libraries** > *Scan*.
-
-#### **B. Télécharger via Shelfarr (flux de demande)**
-
-> [!IMPORTANT]
-> **« Je ne vois que des ebooks — où sont les livres audio ? »**
->
-> Il n'y a pas de filtre « livre audio » dans la recherche, et c'est voulu. Le menu déroulant de Shelfarr ne propose que **All**, **Books** et **Comics & Manga**, parce que les fournisseurs de métadonnées (Hardcover, OpenLibrary, Google Books) indexent des *œuvres*, pas des formats — un titre est une seule entrée, qu'il existe en audio ou en texte.
->
-> **Le format se choisit à l'étape de la demande, pas à celle de la recherche.** Après avoir cliqué sur **Request**, un bloc **« Select format(s) »** apparaît avec trois cartes — **Audiobook**, **Ebook**, **Comics & Manga**. Cochez **Audiobook** (et décochez Ebook). C'est seulement là que Shelfarr interroge vos indexeurs avec la catégorie livre audio (`3030`) et dirige le résultat vers `/audiobooks`.
-
-1. Cherchez un titre depuis la page d'accueil, avec le type de contenu **All** ou **Books**.
-2. Cliquez sur **Request**, puis cochez **Audiobook** dans *Select format(s)*. La demande d'un admin est mise en file de recherche immédiatement ; celle des autres attend une approbation.
-3. Shelfarr interroge Prowlarr (plus les sources directes que vous avez activées), note les résultats selon vos préférences de format et de langue, et choisit le meilleur automatiquement ou vous présente la liste.
-4. La release est envoyée à qBittorrent sous la catégorie `shelfarr`.
-5. Une fois terminée, **Shelfarr renomme et organise les fichiers lui-même** et les livre dans `/audiobooks`, puis déclenche un scan Audiobookshelf si vous l'avez connecté.
-6. Le livre apparaît dans Audiobookshelf. Aucun déplacement manuel — cette étape d'import est ce qui distingue Shelfarr des interfaces de demandes seules.
-
-#### **Dépannage**
-
-| Symptôme | Cause probable |
-|---|---|
-| **« No indexers available with RSS sync enabled, Chaptarr will not grab new releases automatically »** | Chaptarr a **zéro** indexeur, parce qu'il n'a jamais été enregistré dans Prowlarr. Ajoutez-le dans Prowlarr **Settings** > **Apps** en tant qu'application **Readarr** (étape 3), puis *Sync App Indexers*. Vérifiez via **Settings** > **Indexers** dans Chaptarr — la liste ne doit pas être vide. |
-| Indexeurs présents mais RSS toujours désactivé | Prowlarr en est propriétaire en Full Sync : basculer RSS depuis Chaptarr est écrasé. Activez RSS sur l'indexeur **dans Prowlarr**, puis resynchronisez. |
-| Aucun résultat de recherche | L'indexeur n'a aucune catégorie livre mappée, ou Prowlarr n'a jamais synchronisé — relancez **Settings** > **Apps** > *Sync App Indexers* dans Prowlarr |
-| Résultats trouvés, téléchargement jamais lancé | Le test du client de téléchargement échoue — le Host doit être **`gluetun`**, pas `qbittorrent` ; vérifiez ensuite le port `8080` et les identifiants |
-| Le test de connexion reste bloqué, ou signale un serveur distant inattendu | Vous avez saisi `qbittorrent` comme Host et le DNS de votre FAI l'a résolu vers une adresse publique — utilisez `gluetun` |
-| Torrent ajouté mais 0 pair / 0 % indéfiniment | Le port forwarding VPN est cassé ; revérifiez les points 1–2 ci-dessus et relancez `qbit-port-sync` |
-| Téléchargé mais jamais importé | Incohérence de chemin de catégorie : qBittorrent doit écrire dans `/downloads/chaptarr`, qui doit être le même dossier hôte que le `/downloads/chaptarr` vu par Chaptarr |
-| Importé mais absent d'Audiobookshelf | Le dossier de bibliothèque est erroné, ou il faut simplement scanner — **Settings** > **Libraries** > *Scan* |
-| Tracker protégé par Cloudflare en échec | Ajoutez FlareSolverr dans Prowlarr (**Settings** > **Indexers** > `http://flaresolverr:8191/`) et taguez l'indexeur avec `flaresolverr` |
-
-> [!CAUTION]
-> Ne téléchargez que des contenus auxquels vous avez légalement droit. Ce que proposent vos indexeurs, et ce qui est licite là où vous vivez, relève entièrement de votre responsabilité — voir l'[Avertissement](#avertissement).
 
 **[`^        retour au sommaire        ^`](#table-des-matières)**
 
