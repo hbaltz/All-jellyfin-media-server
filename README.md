@@ -1412,14 +1412,15 @@ Once configured, Bazarr will automatically monitor your Sonarr and Radarr librar
 
 # **Updating Applications**
 
-To update the applications, you need to stop the running containers and remove the existing Docker images. You can use the following commands to perform these operations:
+The Tailscale stack updates itself: a cron job runs [`compose_files/VPN-Only/update-stack.sh`](compose_files/VPN-Only/update-stack.sh) at every boot. It pulls the new images and, only when one changed, stops the stack, backs up `configs/` to `~/backups/stack-<date>.tar` (the 3 newest are kept) and recreates the containers. Log: `~/backups/update-stack.log`.
 
 ```bash
-docker-compose down
-docker image prune -a
+cd compose_files/VPN-Only/
+./update-stack.sh                    # update now
+(crontab -l 2>/dev/null; echo "@reboot $PWD/update-stack.sh >> $HOME/backups/update-stack.log 2>&1") | crontab -   # install the boot job (once)
 ```
 
-Then, you can run `docker-compose up -d` to restart the containers with the latest versions of the applications.
+To roll an app back, stop the stack and restore its folder from the archive, e.g. `tar -xf ~/backups/stack-<date>.tar -C ${COMMON_PATH} configs/jellyfin` (as root, after moving the current folder aside).
 
 **[`^        back to top        ^`](#table-of-contents)**
 

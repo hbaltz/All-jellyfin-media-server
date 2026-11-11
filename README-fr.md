@@ -1423,14 +1423,15 @@ Une fois configuré, Bazarr surveillera automatiquement vos bibliothèques Sonar
 
 # **Mise à jour des applications**
 
-Pour mettre à jour les applications, vous devez d'abord arrêter les conteneurs en cours d'exécution et supprimer les images Docker existantes. Vous pouvez utiliser les commandes suivantes pour effectuer ces opérations :
+La stack Tailscale se met à jour toute seule : une tâche cron lance [`compose_files/VPN-Only/update-stack.sh`](compose_files/VPN-Only/update-stack.sh) à chaque démarrage. Il télécharge les nouvelles images et, seulement si l'une a changé, arrête la stack, sauvegarde `configs/` dans `~/backups/stack-<date>.tar` (les 3 plus récentes sont gardées) puis recrée les conteneurs. Journal : `~/backups/update-stack.log`.
 
 ```bash
-docker-compose down
-docker image prune -a
+cd compose_files/VPN-Only/
+./update-stack.sh                    # mettre à jour maintenant
+(crontab -l 2>/dev/null; echo "@reboot $PWD/update-stack.sh >> $HOME/backups/update-stack.log 2>&1") | crontab -   # installer la tâche de démarrage (une fois)
 ```
 
-Ensuite, vous pouvez exécuter `docker-compose up -d` pour redémarrer les conteneurs avec les dernières versions des applications.
+Pour revenir en arrière sur une app, arrêtez la stack et restaurez son dossier depuis l'archive, ex. `tar -xf ~/backups/stack-<date>.tar -C ${COMMON_PATH} configs/jellyfin` (en root, après avoir mis le dossier actuel de côté).
 
 **[`^        retour au sommaire        ^`](#table-des-matières)**
 
