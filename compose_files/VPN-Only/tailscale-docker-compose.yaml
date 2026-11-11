@@ -222,3 +222,30 @@ services:
     ports:
       - 6868:6868
     restart: unless-stopped
+
+  # ── CLEANUPARR ────────────────────────────────────────────
+  # Removes stuck downloads from the Sonarr/Radarr queue (stalled, failed import,
+  # or "completed" with 0 bytes because qBittorrent excluded every file),
+  # blocklists the release and triggers a new search.
+  # Web UI: http://<host>:11011  -  pinned to a minor version: patches only, no breaking changes.
+  cleanuparr:
+    image: ghcr.io/cleanuparr/cleanuparr:2.11
+    container_name: cleanuparr
+    environment:
+      - PORT=11011
+      - PUID=0                  # download files are root-owned (like the rest of this stack); needed to move orphans
+      - PGID=0
+      - TZ=${TZ}
+    volumes:
+      - ${COMMON_PATH}/configs/cleanuparr:/config
+      # Same path as inside qBittorrent, so the orphaned-files cleanup can match files to torrents.
+      - ${COMMON_PATH}/qbittorrent/downloads:/downloads
+    ports:
+      - 11011:11011
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11011/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped

@@ -13,6 +13,7 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
 > - **Translatarr** – traduction automatique des sous-titres
 > - **Tailscale** – expose Jellyfin / Jellyseerr sur un tailnet privé au lieu de publier les ports sur le LAN
 > - **qbit-port-sync** – injecte automatiquement le port forwardé par Gluetun dans qBittorrent
+> - **Cleanuparr** – retire de Sonarr/Radarr les téléchargements bloqués (stalled, import en échec, tous les fichiers exclus par qBittorrent), les met en liste noire et relance une recherche
 >
 > Voir [**Services ajoutés**](#services-ajoutés-fork) plus bas, ainsi que le fichier compose dans [`compose_files/VPN-Only/`](compose_files/VPN-Only/) (`tailscale-docker-compose.yaml`).
 
@@ -47,6 +48,7 @@ Bienvenue dans le dépôt All-jellyfin-media-server ! Ce dépôt contient tout c
     - [**Translatarr**](#translatarr)
     - [**Tailscale**](#tailscale)
     - [**qbit-port-sync**](#qbit-port-sync)
+    - [**Cleanuparr**](#cleanuparr)
 - [**Prérequis**](#prérequis)
   - [**Docker**](#docker)
     - [**Utiliser Docker Compose :**](#utiliser-docker-compose-)
@@ -247,6 +249,15 @@ Ces services **ne font pas partie du projet d'origine**. Ils sont câblés dans 
 ### **qbit-port-sync**
 
 Un petit conteneur utilitaire (`curlimages/curl`) partageant l'espace réseau de Gluetun. Il lit le port que Gluetun fait suivre depuis le fournisseur VPN (`/tmp/gluetun/forwarded_port`) et appelle l'API de qBittorrent pour le définir comme port d'écoute, afin que la connectivité entrante continue de fonctionner quand ce port change. Un chien de garde ([`qbit-port-watch.sh`](compose_files/VPN-Only/qbit-port-watch.sh)) vérifie chaque minute que qBittorrent écoute bien sur l'adresse du VPN avec ce port. Sinon (qBittorrent démarré avant WireGuard, reconnexion VPN, nouveau port), tous les transferts restent à 0 : il relance alors `scripts/qbit-port-sync.sh`, qui passe par le port 0 pour forcer qBittorrent à se ré-attacher.
+
+### **Cleanuparr**
+
+[Cleanuparr](https://github.com/Cleanuparr/Cleanuparr) surveille les files d'attente de Sonarr/Radarr et retire les téléchargements bloqués : stalled, import en échec, ou « terminés » avec 0 octet parce que les *Excluded file names* de qBittorrent ont bloqué tous les fichiers (typique des fausses releases / malwares). La release est mise en liste noire dans l'*arr et une nouvelle recherche est lancée automatiquement.
+
+- Image : `ghcr.io/cleanuparr/cleanuparr:2.11` (épinglée sur une version mineure : correctifs, pas de changements cassants)
+- Interface web : `http://<hôte>:11011` (créez le compte admin à la première visite)
+- Montages : `configs/cleanuparr:/config`, `qbittorrent/downloads:/downloads` (même chemin que dans qBittorrent, pour le nettoyage *Orphaned Files* qui déplace les fichiers qu'aucun torrent ne réclame vers `/downloads/orphaned`, puis les purge)
+- Configuration : ajoutez le client qBittorrent avec **Client Host** `http://gluetun:8080`, les arrs Sonarr `http://sonarr:8989` (API v4) et Radarr `http://radarr:7878` (API v6) avec leurs clés API (**Settings** > **General** dans chaque app), puis activez le **Queue Cleaner**.
 
 ---
 
@@ -934,7 +945,7 @@ Ce fork ajoute un fichier compose basé sur Tailscale dans `compose_files/VPN-On
 
 | Fichier | Contenu |
 |---|---|
-| `tailscale-docker-compose.yaml` | Tailscale + Jellyfin + Jellyseerr + Gluetun + qBittorrent + qbit-port-sync + FlareSolverr + Prowlarr + Sonarr + Radarr + Bazarr + Translatarr |
+| `tailscale-docker-compose.yaml` | Tailscale + Jellyfin + Jellyseerr + Gluetun + qBittorrent + qbit-port-sync + FlareSolverr + Prowlarr + Sonarr + Radarr + Bazarr + Translatarr + Cleanuparr |
 
 Puis :
 
@@ -965,6 +976,7 @@ Ajoutés par ce fork :
 
 * Bazarr : http://localhost:6767
 * Translatarr : http://localhost:6868
+* Cleanuparr : http://localhost:11011
 
 Avec un fichier compose **Tailscale**, Jellyfin / Jellyseerr sont accessibles via le tailnet et non `localhost` :
 
